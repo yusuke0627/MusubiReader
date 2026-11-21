@@ -17,7 +17,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.musubireader.app"
+      "bundleIdentifier": "com.musubireader.app",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "processing"
+        ],
+        "BGTaskSchedulerPermittedIdentifiers": [
+          "musubi-background-sync",
+          "musubi-background-prefetch"
+        ],
+        "NSUserNotificationUsageDescription": "興味キーワードに一致する新着記事をお知らせするために通知を使用します。"
+      }
     },
     "android": {
       "adaptiveIcon": {

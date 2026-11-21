@@ -88,6 +88,9 @@ export interface AppDataContextValue {
     Array<{ article: Article; matchedKeywords: string[] }>
   >;
   listSavedArticles: () => Promise<Article[]>;
+  getArticleById: (articleId: string) => Promise<Article | null>;
+  getCacheEntry: (articleId: string) => Promise<CacheEntry | null>;
+  recordArticleRead: (articleId: string, category: string) => Promise<void>;
   toggleSaved: (articleId: string) => Promise<void>;
   muteSite: (siteId: string, isCustom?: boolean) => Promise<void>;
   unmuteSite: (siteId: string, isCustom?: boolean) => Promise<void>;
@@ -416,6 +419,40 @@ export function AppDataProvider({
     return rt.articleRepo.listSaved();
   }, []);
 
+  const getArticleById = useCallback(
+    async (articleId: string): Promise<Article | null> => {
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return null;
+      }
+      return rt.articleRepo.getById(articleId);
+    },
+    []
+  );
+
+  const getCacheEntry = useCallback(
+    async (articleId: string): Promise<CacheEntry | null> => {
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return null;
+      }
+      return rt.articleRepo.getCacheEntry(articleId);
+    },
+    []
+  );
+
+  const recordArticleRead = useCallback(
+    async (articleId: string, category: string): Promise<void> => {
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return;
+      }
+      await rt.articleRepo.recordRead(articleId, category, rt.now());
+      await loadSnapshot(rt);
+    },
+    [loadSnapshot]
+  );
+
   const toggleSaved = useCallback(
     async (articleId: string) => {
       const rt = runtimeRef.current;
@@ -672,6 +709,9 @@ export function AppDataProvider({
       listArticlesByPackAndCategory,
       listPickupArticles,
       listSavedArticles,
+      getArticleById,
+      getCacheEntry,
+      recordArticleRead,
       toggleSaved,
       muteSite,
       unmuteSite,
@@ -708,6 +748,9 @@ export function AppDataProvider({
       listArticlesByPackAndCategory,
       listPickupArticles,
       listSavedArticles,
+      getArticleById,
+      getCacheEntry,
+      recordArticleRead,
       toggleSaved,
       muteSite,
       unmuteSite,

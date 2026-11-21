@@ -5,6 +5,7 @@ import {
 } from './MusubiWebView';
 
 export {
+  isHttpUrl,
   MusubiWebView,
   type CompileAdBlockRulesResult,
   type MusubiWebViewLoadEndEvent,

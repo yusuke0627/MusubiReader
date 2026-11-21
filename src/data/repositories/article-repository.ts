@@ -73,6 +73,16 @@ function parseTagsJson(raw: string): string[] {
   }
 }
 
+function mapCacheEntryRow(row: CacheEntryRow): CacheEntry {
+  return {
+    articleId: row.article_id,
+    localPath: row.local_path,
+    sizeBytes: row.size_bytes,
+    cachedAt: row.cached_at,
+    lastAccessedAt: row.last_accessed_at,
+  };
+}
+
 function mapArticleRow(row: ArticleRow): Article {
   return {
     id: row.id,
@@ -209,6 +219,17 @@ export class ArticleRepository {
     return rows.map(mapArticleRow);
   }
 
+  async getById(articleId: string): Promise<Article | null> {
+    if (!articleId) {
+      return null;
+    }
+    const row = await this.db.getFirstAsync<ArticleRow>(
+      `SELECT ${ARTICLE_SELECT_COLUMNS} FROM articles WHERE id = ?`,
+      [articleId]
+    );
+    return row ? mapArticleRow(row) : null;
+  }
+
   async toggleSaved(articleId: string): Promise<boolean> {
     let nextSaved = false;
     await this.db.withTransactionAsync(async () => {
@@ -295,13 +316,18 @@ export class ArticleRepository {
       'SELECT article_id, local_path, size_bytes, cached_at, last_accessed_at FROM prefetch_cache ORDER BY last_accessed_at ASC',
       []
     );
-    return rows.map((row) => ({
-      articleId: row.article_id,
-      localPath: row.local_path,
-      sizeBytes: row.size_bytes,
-      cachedAt: row.cached_at,
-      lastAccessedAt: row.last_accessed_at,
-    }));
+    return rows.map(mapCacheEntryRow);
+  }
+
+  async getCacheEntry(articleId: string): Promise<CacheEntry | null> {
+    if (!articleId) {
+      return null;
+    }
+    const row = await this.db.getFirstAsync<CacheEntryRow>(
+      'SELECT article_id, local_path, size_bytes, cached_at, last_accessed_at FROM prefetch_cache WHERE article_id = ?',
+      [articleId]
+    );
+    return row ? mapCacheEntryRow(row) : null;
   }
 
   async applyPurgePlan(plan: PurgePlan): Promise<void> {
