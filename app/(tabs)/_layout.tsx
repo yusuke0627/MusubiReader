@@ -1,66 +1,78 @@
+import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
+import React from 'react';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { useThemeColors } from '../../src/theme/tokens';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const colors = useThemeColors();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+        },
+        headerStyle: {
+          backgroundColor: colors.surface,
+        },
+        headerTitleStyle: {
+          color: colors.text,
+          fontWeight: '700',
+        },
         headerShown: useClientOnlyValue(false, true),
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
+          title: 'ホーム',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
+                ios: 'newspaper',
+                android: 'article',
+                web: 'article',
               }}
               tintColor={color}
-              size={28}
+              size={22}
             />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
           ),
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="pickup"
         options={{
-          title: 'Tab Two',
+          title: 'ピックアップ',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
+                ios: 'sparkles',
+                android: 'auto_awesome',
+                web: 'auto_awesome',
               }}
               tintColor={color}
-              size={28}
+              size={22}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="sources"
+        options={{
+          title: 'ソース・設定',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: 'slider.horizontal.3',
+                android: 'tune',
+                web: 'tune',
+              }}
+              tintColor={color}
+              size={22}
             />
           ),
         }}
