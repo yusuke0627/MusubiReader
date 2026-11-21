@@ -8,6 +8,7 @@ import {
   runWifiPrefetchAndPurge,
   type WifiPrefetchAndPurgeResult,
 } from './prefetch-service';
+import { createTimeoutFetcher, getRemoteConfig } from './remote-config';
 import { syncAllFeeds, type SyncAllFeedsResult } from './sync-service';
 
 /**
@@ -63,6 +64,12 @@ export async function executeBackgroundSyncTask(
     } else {
       const { catalogRepo, articleRepo, settingsRepo } =
         await createRepositories();
+      const { catalogUrl } = getRemoteConfig();
+      if (catalogUrl) {
+        await catalogRepo
+          .refreshFromRemote(catalogUrl, createTimeoutFetcher())
+          .catch(() => {});
+      }
       await syncAllFeeds({ catalogRepo, articleRepo, settingsRepo });
     }
     return BackgroundTask.BackgroundTaskResult.Success;

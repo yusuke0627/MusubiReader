@@ -1,6 +1,11 @@
 import iconv from 'iconv-lite';
 import type { ArticleRepository } from '../data/repositories/article-repository';
 import type { SettingsRepository } from '../data/repositories/settings-repository';
+import {
+  detectBomOrHeaderCharset,
+  normalizeCharset,
+  readAsciiPrefix,
+} from '../domain/charset';
 import { curatePickupArticles, isArticleBlocked } from '../domain/curation';
 import {
   getTopReadCategories,
@@ -82,13 +87,15 @@ export function getArticlePrefetchDir(
 }
 
 const IMG_TAG_REGEX = /<img\b[^>]*>/gi;
+const META_TAG_REGEX = /<meta\b[^>]*>/gi;
+const BASE_TAG_REGEX = /<base\b[^>]*>/gi;
 const ATTR_REGEX_CACHE = new Map<string, RegExp>();
 
 function extractAttribute(tag: string, attrName: string): string | null {
   let regex = ATTR_REGEX_CACHE.get(attrName);
   if (!regex) {
     regex = new RegExp(
-      `\\b${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>` + '`' + `]+))`,
+      `(?:^|\\s)${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>` + '`' + `]+))`,
       'i'
     );
     ATTR_REGEX_CACHE.set(attrName, regex);
@@ -98,6 +105,171 @@ function extractAttribute(tag: string, attrName: string): string | null {
     return null;
   }
   return (match[1] ?? match[2] ?? match[3] ?? '').trim() || null;
+}
+
+function decodeHtmlUrlEntities(rawUrl: string): string {
+  return rawUrl.replace(/&amp;/gi, '&');
+}
+
+function resolveImageCandidateUrl(rawCandidate: string, baseUrl: string): string | null {
+  if (!rawCandidate || rawCandidate.startsWith('data:')) {
+    return null;
+  }
+  try {
+    const resolved = new URL(decodeHtmlUrlEntities(rawCandidate), baseUrl);
+    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+      return null;
+    }
+    return resolved.toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolveFirstImageUrlFromTag(tag: string, baseUrl: string): string | null {
+  const candidates = [
+    extractAttribute(tag, 'data-src'),
+    extractAttribute(tag, 'data-original'),
+    extractAttribute(tag, 'data-lazy-src'),
+    extractAttribute(tag, 'src'),
+  ];
+
+  for (const rawCandidate of candidates) {
+    if (!rawCandidate) {
+      continue;
+    }
+    const resolved = resolveImageCandidateUrl(rawCandidate, baseUrl);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
+function stripAttribute(tag: string, attrName: string): string {
+  const regex = new RegExp(
+    `\\s+${attrName}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'=<>` + '`' + `]+)`,
+    'gi'
+  );
+  return tag.replace(regex, '');
+}
+
+function normalizeImgTagToLocal(tag: string, localFilename: string): string {
+  let updated = tag;
+  for (const attr of [
+    'data-src',
+    'data-original',
+    'data-lazy-src',
+    'srcset',
+    'data-srcset',
+  ]) {
+    updated = stripAttribute(updated, attr);
+  }
+
+  const srcAttrRegex = /(\s)src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/i;
+  if (srcAttrRegex.test(updated)) {
+    return updated.replace(srcAttrRegex, `$1src="${localFilename}"`);
+  }
+
+  return updated.replace(/^<img\b/i, `<img src="${localFilename}"`);
+}
+
+function resolveDocumentBaseUrl(html: string, fallbackUrl: string): string {
+  const baseMatch = BASE_TAG_REGEX.exec(html);
+  BASE_TAG_REGEX.lastIndex = 0;
+  if (!baseMatch) {
+    return fallbackUrl;
+  }
+  const href = extractAttribute(baseMatch[0], 'href');
+  if (!href) {
+    return fallbackUrl;
+  }
+  try {
+    return new URL(decodeHtmlUrlEntities(href), fallbackUrl).toString();
+  } catch {
+    return fallbackUrl;
+  }
+}
+
+/**
+ * Decodes HTML bytes using BOM, HTTP Content-Type charset, or `<meta charset>`
+ * before falling back to UTF-8.
+ */
+export function decodeHtmlBytes(
+  bytes: Uint8Array,
+  contentType?: string
+): string {
+  const fromBomOrHeader = detectBomOrHeaderCharset(bytes, contentType);
+  if (fromBomOrHeader) {
+    return iconv.decode(bytes, fromBomOrHeader);
+  }
+
+  const head = readAsciiPrefix(bytes, 4096);
+  for (const metaMatch of head.matchAll(META_TAG_REGEX)) {
+    const tag = metaMatch[0];
+    const directCharset = /\bcharset\s*=\s*["']?([a-zA-Z0-9._-]+)/i.exec(tag);
+    const contentCharset = /charset\s*=\s*([a-zA-Z0-9._-]+)/i.exec(
+      extractAttribute(tag, 'content') ?? ''
+    );
+    const normalized = normalizeCharset(directCharset?.[1] ?? contentCharset?.[1]);
+    if (normalized) {
+      return iconv.decode(bytes, normalized);
+    }
+  }
+
+  return decodeUtf8(bytes);
+}
+
+/**
+ * Rewrites matched `<img>` tags in cached HTML to reference locally downloaded
+ * relative `img-*` files, removes `<base>` tags, and normalizes charset meta tags to UTF-8.
+ */
+export function rewriteCachedHtml(
+  html: string,
+  baseUrl: string,
+  localFilesByUrl: ReadonlyMap<string, string>
+): string {
+  let updated = html.replace(IMG_TAG_REGEX, (tag) => {
+    const resolvedUrl = resolveFirstImageUrlFromTag(tag, baseUrl);
+    if (!resolvedUrl) {
+      return tag;
+    }
+    const localFilename = localFilesByUrl.get(resolvedUrl);
+    if (!localFilename) {
+      return tag;
+    }
+    return normalizeImgTagToLocal(tag, localFilename);
+  });
+
+  // Remove <base> tags so relative local filenames (`img-0.*`) resolve inside the cache folder.
+  updated = updated.replace(BASE_TAG_REGEX, '');
+
+  let hasCharsetMeta = false;
+  updated = updated.replace(META_TAG_REGEX, (tag) => {
+    if (/\bcharset\s*=/i.test(tag)) {
+      hasCharsetMeta = true;
+      return tag.replace(/(charset\s*=\s*["']?)[a-zA-Z0-9._-]+/gi, '$1utf-8');
+    }
+    return tag;
+  });
+
+  if (!hasCharsetMeta) {
+    if (/<head\b[^>]*>/i.test(updated)) {
+      updated = updated.replace(
+        /<head\b[^>]*>/i,
+        (match) => `${match}<meta charset="utf-8">`
+      );
+    } else if (/<html\b[^>]*>/i.test(updated)) {
+      updated = updated.replace(
+        /<html\b[^>]*>/i,
+        (match) => `${match}<head><meta charset="utf-8"></head>`
+      );
+    } else {
+      updated = `<meta charset="utf-8">${updated}`;
+    }
+  }
+
+  return updated;
 }
 
 /**
@@ -121,33 +293,10 @@ export function extractPrimaryImageUrls(
       break;
     }
 
-    const tag = match[0];
-    const candidates = [
-      extractAttribute(tag, 'data-src'),
-      extractAttribute(tag, 'data-original'),
-      extractAttribute(tag, 'data-lazy-src'),
-      extractAttribute(tag, 'src'),
-    ];
-
-    for (const rawCandidate of candidates) {
-      if (!rawCandidate || rawCandidate.startsWith('data:')) {
-        continue;
-      }
-
-      try {
-        const resolved = new URL(rawCandidate, baseUrl);
-        if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
-          continue;
-        }
-        const normalized = resolved.toString();
-        if (!seen.has(normalized)) {
-          seen.add(normalized);
-          urls.push(normalized);
-        }
-        break;
-      } catch {
-        continue;
-      }
+    const resolved = resolveFirstImageUrlFromTag(match[0], baseUrl);
+    if (resolved && !seen.has(resolved)) {
+      seen.add(resolved);
+      urls.push(resolved);
     }
   }
 
@@ -169,6 +318,13 @@ function decodeUtf8(bytes: Uint8Array): string {
     return new TextDecoder('utf-8').decode(bytes);
   }
   return iconv.decode(bytes, 'utf-8');
+}
+
+function encodeUtf8(text: string): Uint8Array {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(text);
+  }
+  return new Uint8Array(iconv.encode(text, 'utf-8'));
 }
 
 /**
@@ -231,12 +387,20 @@ async function prefetchSingleArticle(
     }
 
     const htmlBytes = new Uint8Array(await htmlRes.arrayBuffer());
+    const contentType = htmlRes.headers.get('content-type') ?? undefined;
     const articleDir = getArticlePrefetchDir(fileStore.cacheDirectory, article.id);
     const htmlPath = `${articleDir}index.html`;
-    let totalBytes = await fileStore.writeFile(htmlPath, htmlBytes);
 
-    const htmlText = decodeUtf8(htmlBytes);
-    const imageUrls = extractPrimaryImageUrls(htmlText, article.url, maxImages);
+    const htmlText = decodeHtmlBytes(htmlBytes, contentType);
+    const effectiveBaseUrl = resolveDocumentBaseUrl(htmlText, article.url);
+    const imageUrls = extractPrimaryImageUrls(
+      htmlText,
+      effectiveBaseUrl,
+      maxImages
+    );
+
+    let totalBytes = 0;
+    const localFilesByUrl = new Map<string, string>();
 
     for (let i = 0; i < imageUrls.length; i += 1) {
       const imageUrl = imageUrls[i];
@@ -247,14 +411,23 @@ async function prefetchSingleArticle(
         }
         const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
         const ext = getImageExtension(imageUrl);
+        const filename = `img-${i}${ext}`;
         totalBytes += await fileStore.writeFile(
-          `${articleDir}img-${i}${ext}`,
+          `${articleDir}${filename}`,
           imgBytes
         );
+        localFilesByUrl.set(imageUrl, filename);
       } catch {
         // Individual image fetch failure should not discard the cached HTML.
       }
     }
+
+    const rewrittenHtml = rewriteCachedHtml(
+      htmlText,
+      effectiveBaseUrl,
+      localFilesByUrl
+    );
+    totalBytes += await fileStore.writeFile(htmlPath, encodeUtf8(rewrittenHtml));
 
     return {
       articleId: article.id,

@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { configureNotificationHandler } from '../src/services/sync-service';
 import { AppDataProvider } from '../src/state/app-context';
 
 export {
@@ -23,6 +24,10 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  useEffect(() => {
+    void configureNotificationHandler();
+  }, []);
 
   useEffect(() => {
     if (error) throw error;

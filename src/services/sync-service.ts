@@ -63,6 +63,121 @@ export function buildArticleId(siteId: string, url: string, title: string): stri
   return `${safeSite}-${high}${low}`;
 }
 
+export interface NotificationPermissionsLike {
+  granted: boolean;
+  canAskAgain?: boolean;
+  ios?: {
+    status?: number;
+  };
+}
+
+export interface NotificationsModuleLike {
+  IosAuthorizationStatus?: {
+    PROVISIONAL?: number;
+  };
+  setNotificationHandler?: (handler: {
+    handleNotification: () => Promise<{
+      shouldShowBanner: boolean;
+      shouldShowList: boolean;
+      shouldPlaySound: boolean;
+      shouldSetBadge: boolean;
+    }>;
+  } | null) => void;
+  getPermissionsAsync: () => Promise<NotificationPermissionsLike>;
+  requestPermissionsAsync: (permissions?: {
+    ios?: {
+      allowAlert?: boolean;
+      allowBadge?: boolean;
+      allowSound?: boolean;
+    };
+  }) => Promise<NotificationPermissionsLike>;
+}
+
+let defaultNotificationHandlerConfigured = false;
+
+function isNotificationPermissionGranted(
+  permissions: NotificationPermissionsLike | null | undefined,
+  provisionalStatus?: number
+): boolean {
+  if (!permissions) {
+    return false;
+  }
+  if (permissions.granted) {
+    return true;
+  }
+  return (
+    provisionalStatus !== undefined &&
+    permissions.ios?.status === provisionalStatus
+  );
+}
+
+/**
+ * Registers the foreground notification presentation handler cleanly.
+ * Safely no-ops on web, Jest, or unsupported non-native runtimes.
+ */
+export async function configureNotificationHandler(
+  notificationsApi?: NotificationsModuleLike
+): Promise<void> {
+  if (!notificationsApi && defaultNotificationHandlerConfigured) {
+    return;
+  }
+
+  try {
+    const api: NotificationsModuleLike =
+      notificationsApi ?? (await import('expo-notifications'));
+    if (typeof api.setNotificationHandler !== 'function') {
+      return;
+    }
+
+    api.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+
+    if (!notificationsApi) {
+      defaultNotificationHandlerConfigured = true;
+    }
+  } catch {
+    // Safe no-op in non-native or Jest environments.
+  }
+}
+
+/**
+ * Checks notification authorization and requests iOS alert/badge/sound
+ * permissions if still undetermined. Returns whether notifications are allowed.
+ */
+export async function ensureNotificationPermissions(
+  notificationsApi?: NotificationsModuleLike
+): Promise<boolean> {
+  try {
+    const api: NotificationsModuleLike =
+      notificationsApi ?? (await import('expo-notifications'));
+    const provisional = api.IosAuthorizationStatus?.PROVISIONAL;
+    const current = await api.getPermissionsAsync();
+    if (isNotificationPermissionGranted(current, provisional)) {
+      return true;
+    }
+    if (current.canAskAgain === false) {
+      return false;
+    }
+
+    const requested = await api.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+    return isNotificationPermissionGranted(requested, provisional);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Default Expo runtime local notification sender using `expo-notifications`.
  */
@@ -71,9 +186,12 @@ export function createExpoNotifier(): LocalNotifier {
     async notify(payload: NotificationPayload): Promise<void> {
       const Notifications = await import('expo-notifications');
       const permissions = await Notifications.getPermissionsAsync();
-      const isProvisional =
-        permissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-      if (!permissions.granted && !isProvisional) {
+      if (
+        !isNotificationPermissionGranted(
+          permissions,
+          Notifications.IosAuthorizationStatus.PROVISIONAL
+        )
+      ) {
         return;
       }
 

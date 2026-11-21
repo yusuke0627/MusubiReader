@@ -24,6 +24,13 @@ import type {
 } from '../domain/types';
 import { registerBackgroundTasks } from '../services/background-tasks';
 import {
+  createTimeoutFetcher,
+  getRemoteConfig,
+  syncAndCompileAdBlockRules,
+  type AdBlockRulesCacheStore,
+  type RemoteConfig,
+} from '../services/remote-config';
+import {
   createExpoFileStore,
   createExpoNetworkStateProvider,
   getArticlePrefetchDir,
@@ -31,7 +38,12 @@ import {
   type NetworkStateLike,
   type WifiPrefetchAndPurgeResult,
 } from '../services/prefetch-service';
-import { syncAllFeeds, type SyncAllFeedsResult } from '../services/sync-service';
+import {
+  configureNotificationHandler,
+  ensureNotificationPermissions,
+  syncAllFeeds,
+  type SyncAllFeedsResult,
+} from '../services/sync-service';
 
 export interface AppRuntimeOverrides {
   db?: SQLiteDatabaseLike;
@@ -41,6 +53,11 @@ export interface AppRuntimeOverrides {
   syncFn?: () => Promise<SyncAllFeedsResult>;
   prefetchFn?: () => Promise<WifiPrefetchAndPurgeResult>;
   registerBackgroundFn?: () => Promise<void>;
+  configureNotificationsFn?: () => Promise<void>;
+  requestNotificationPermissionsFn?: () => Promise<boolean>;
+  remoteConfig?: RemoteConfig;
+  fetcher?: typeof fetch;
+  adBlockCacheStore?: AdBlockRulesCacheStore;
   getNetworkStateFn?: () => Promise<NetworkStateLike>;
   deleteCachePathFn?: (targetPath: string) => Promise<void>;
   now?: () => number;
@@ -53,6 +70,10 @@ interface ResolvedRuntime {
   syncFn: () => Promise<SyncAllFeedsResult>;
   prefetchFn: () => Promise<WifiPrefetchAndPurgeResult>;
   registerBackgroundFn: () => Promise<void>;
+  configureNotificationsFn: () => Promise<void>;
+  requestNotificationPermissionsFn: () => Promise<boolean>;
+  refreshCatalogFn: () => Promise<void>;
+  syncAdBlockRulesFn: () => Promise<void>;
   getNetworkStateFn: () => Promise<NetworkStateLike>;
   deleteCachePathFn: (targetPath: string) => Promise<void>;
   now: () => number;
@@ -143,6 +164,8 @@ async function buildRuntime(
     overrides?.settingsRepo ?? new SettingsRepository(db!);
 
   const now = overrides?.now ?? Date.now;
+  const fetcher = overrides?.fetcher ?? fetch;
+  const remoteConfig = overrides?.remoteConfig ?? getRemoteConfig();
   const networkProvider = createExpoNetworkStateProvider();
 
   return {
@@ -151,12 +174,33 @@ async function buildRuntime(
     settingsRepo,
     syncFn:
       overrides?.syncFn ??
-      (() => syncAllFeeds({ catalogRepo, articleRepo, settingsRepo, now })),
+      (() => syncAllFeeds({ catalogRepo, articleRepo, settingsRepo, fetcher, now })),
     prefetchFn:
       overrides?.prefetchFn ??
-      (() => runWifiPrefetchAndPurge({ articleRepo, settingsRepo, now })),
+      (() => runWifiPrefetchAndPurge({ articleRepo, settingsRepo, fetcher, now })),
     registerBackgroundFn:
       overrides?.registerBackgroundFn ?? (() => registerBackgroundTasks()),
+    configureNotificationsFn:
+      overrides?.configureNotificationsFn ??
+      (() => configureNotificationHandler()),
+    requestNotificationPermissionsFn:
+      overrides?.requestNotificationPermissionsFn ??
+      (() => ensureNotificationPermissions()),
+    refreshCatalogFn: async () => {
+      if (!remoteConfig.catalogUrl) {
+        return;
+      }
+      await catalogRepo
+        .refreshFromRemote(remoteConfig.catalogUrl, createTimeoutFetcher(fetcher))
+        .catch(() => {});
+    },
+    syncAdBlockRulesFn: async () => {
+      await syncAndCompileAdBlockRules({
+        url: remoteConfig.adBlockRulesUrl,
+        fetcher,
+        cacheStore: overrides?.adBlockCacheStore,
+      }).catch(() => {});
+    },
     getNetworkStateFn:
       overrides?.getNetworkStateFn ??
       (() => networkProvider.getNetworkStateAsync()),
@@ -282,6 +326,7 @@ export function AppDataProvider({
         setIsSyncing(true);
       }
       try {
+        await rt.refreshCatalogFn();
         const result = await rt.syncFn();
         await loadSnapshot(rt);
         if (mountedRef.current) {
@@ -361,7 +406,10 @@ export function AppDataProvider({
         }
         setIsReady(true);
 
-        // Register OS background tasks and trigger non-blocking initial sync.
+        // Configure foreground notifications, pre-compile ad-block rules, register OS background tasks,
+        // and trigger non-blocking initial sync.
+        void rt.configureNotificationsFn().catch(() => {});
+        void rt.syncAdBlockRulesFn().catch(() => {});
         rt.registerBackgroundFn().catch(() => {});
         void (async () => {
           await syncNow();
@@ -547,6 +595,7 @@ export function AppDataProvider({
         createdAt: nowMs,
       });
       await loadSnapshot(rt);
+      await rt.requestNotificationPermissionsFn().catch(() => false);
       return true;
     },
     [loadSnapshot]

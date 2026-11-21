@@ -90,6 +90,7 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   private let webView: WKWebView
   private var loadedUrl: String?
   private var appliedAdBlockEnabled: Bool?
+  private var allowedOfflineDirectory: URL?
   private var hasFinishedInitialLoad = false
   private var initialLoadFailed = false
   private var hasAttemptedOfflineFallback = false
@@ -149,6 +150,7 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
 
     if urlChanged {
       loadedUrl = normalizedUrl
+      allowedOfflineDirectory = nil
       hasFinishedInitialLoad = false
       initialLoadFailed = false
       hasAttemptedOfflineFallback = false
@@ -232,8 +234,63 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
     return URL(fileURLWithPath: path)
   }
 
+  private func isFileUrl(_ fileUrl: URL, inside directoryUrl: URL) -> Bool {
+    let resolvedFile = fileUrl.resolvingSymlinksInPath().standardizedFileURL.path
+    let resolvedDir = directoryUrl.resolvingSymlinksInPath().standardizedFileURL.path
+    let dirPrefix = resolvedDir.hasSuffix("/") ? resolvedDir : resolvedDir + "/"
+    return resolvedFile == resolvedDir || resolvedFile.hasPrefix(dirPrefix)
+  }
+
+  private func extractDeclaredCharset(from data: Data) -> String.Encoding? {
+    if data.starts(with: [0xEF, 0xBB, 0xBF]) {
+      return .utf8
+    }
+
+    let prefixCount = min(data.count, 4096)
+    guard prefixCount > 0,
+          let head = String(data: data.prefix(prefixCount), encoding: .isoLatin1) else {
+      return nil
+    }
+
+    let pattern = #"<meta\b[^>]*\bcharset\s*=\s*["']?([A-Za-z0-9._-]+)"#
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+          let match = regex.firstMatch(in: head, range: NSRange(head.startIndex..., in: head)),
+          let range = Range(match.range(at: 1), in: head) else {
+      return nil
+    }
+
+    let charsetName = String(head[range]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    switch charsetName {
+    case "utf-8", "utf8":
+      return .utf8
+    case "euc-jp", "euc_jp", "eucjp", "x-euc-jp":
+      return .japaneseEUC
+    case "shift_jis", "shift-jis", "sjis", "x-sjis", "ms_kanji", "cp932", "ms932", "windows-31j":
+      return .shiftJIS
+    case "iso-2022-jp", "csiso2022jp":
+      return .iso2022JP
+    case "iso-8859-1", "latin1":
+      return .isoLatin1
+    default:
+      let cfEncoding = CFStringConvertIANACharSetNameToEncoding(charsetName as CFString)
+      if cfEncoding != kCFStringEncodingInvalidId {
+        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
+        return String.Encoding(rawValue: nsEncoding)
+      }
+      return nil
+    }
+  }
+
   private func decodeHtmlData(_ data: Data) -> String? {
-    let encodings: [String.Encoding] = [.utf8, .shiftJIS, .japaneseEUC, .isoLatin1]
+    var encodings: [String.Encoding] = []
+    if let declared = extractDeclaredCharset(from: data) {
+      encodings.append(declared)
+    }
+    for fallback: String.Encoding in [.utf8, .japaneseEUC, .shiftJIS, .isoLatin1] {
+      if !encodings.contains(fallback) {
+        encodings.append(fallback)
+      }
+    }
     for encoding in encodings {
       if let text = String(data: data, encoding: encoding) {
         return text
@@ -242,22 +299,89 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
     return nil
   }
 
+  private func ensureUtf8MetaCharset(in html: String) -> String {
+    guard let metaRegex = try? NSRegularExpression(pattern: #"<meta\b[^>]*>"#, options: [.caseInsensitive]),
+          let charsetRegex = try? NSRegularExpression(pattern: #"(charset\s*=\s*["']?)[A-Za-z0-9._-]+"#, options: [.caseInsensitive]) else {
+      return "<meta charset=\"utf-8\">" + html
+    }
+
+    let matches = metaRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+    var replacedCharset = false
+    var mutableHtml = html
+
+    for match in matches.reversed() {
+      guard let swiftRange = Range(match.range, in: mutableHtml) else {
+        continue
+      }
+      let tag = String(mutableHtml[swiftRange])
+      let tagNsRange = NSRange(tag.startIndex..., in: tag)
+      if charsetRegex.firstMatch(in: tag, range: tagNsRange) != nil {
+        replacedCharset = true
+        let updatedTag = charsetRegex.stringByReplacingMatches(
+          in: tag,
+          range: tagNsRange,
+          withTemplate: "$1utf-8"
+        )
+        mutableHtml.replaceSubrange(swiftRange, with: updatedTag)
+      }
+    }
+
+    if replacedCharset {
+      return mutableHtml
+    }
+    if let headRange = mutableHtml.range(of: #"<head\b[^>]*>"#, options: [.regularExpression, .caseInsensitive]) {
+      mutableHtml.insert(contentsOf: "<meta charset=\"utf-8\">", at: headRange.upperBound)
+      return mutableHtml
+    }
+    return "<meta charset=\"utf-8\">" + mutableHtml
+  }
+
+  private func prepareOfflineFileURL(_ fileUrl: URL, in cacheDir: URL) -> URL? {
+    guard let data = try? Data(contentsOf: fileUrl) else {
+      return nil
+    }
+    if extractDeclaredCharset(from: data) == .utf8,
+       String(data: data, encoding: .utf8) != nil {
+      return fileUrl
+    }
+    guard let decoded = decodeHtmlData(data) else {
+      return nil
+    }
+    let utf8Html = ensureUtf8MetaCharset(in: decoded)
+    guard let utf8Data = utf8Html.data(using: .utf8) else {
+      return nil
+    }
+    let normalizedUrl = cacheDir.appendingPathComponent("index.utf8.html")
+    do {
+      try utf8Data.write(to: normalizedUrl, options: .atomic)
+      return normalizedUrl
+    } catch {
+      return nil
+    }
+  }
+
   private func loadOfflineHtmlIfAvailable(baseUrlString: String) -> Bool {
     guard let path = offlineHtmlPath?.trimmingCharacters(in: .whitespacesAndNewlines),
           !path.isEmpty,
           let fileUrl = resolveLocalFileURL(path),
-          let data = try? Data(contentsOf: fileUrl),
-          let html = decodeHtmlData(data) else {
+          fileUrl.isFileURL,
+          FileManager.default.isReadableFile(atPath: fileUrl.path) else {
       return false
     }
 
+    let cacheDir = fileUrl.deletingLastPathComponent().standardizedFileURL
+    guard let targetFileUrl = prepareOfflineFileURL(fileUrl, in: cacheDir) else {
+      return false
+    }
+
+    allowedOfflineDirectory = cacheDir
     hasAttemptedOfflineFallback = true
     isShowingOfflineFallback = true
     if !isLoadInProgress {
       isLoadInProgress = true
       onLoadStart(["url": baseUrlString])
     }
-    webView.loadHTMLString(html, baseURL: URL(string: baseUrlString))
+    webView.loadFileURL(targetFileUrl, allowingReadAccessTo: cacheDir)
     return true
   }
 
@@ -329,6 +453,17 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   ) {
     guard let requestUrl = navigationAction.request.url,
           let scheme = requestUrl.scheme?.lowercased() else {
+      decisionHandler(.cancel)
+      return
+    }
+
+    if scheme == "file" {
+      if isShowingOfflineFallback,
+         let allowedDir = allowedOfflineDirectory,
+         isFileUrl(requestUrl, inside: allowedDir) {
+        decisionHandler(.allow)
+        return
+      }
       decisionHandler(.cancel)
       return
     }

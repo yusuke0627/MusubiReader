@@ -1,3 +1,4 @@
+import iconv from 'iconv-lite';
 import { BackgroundTaskResult, BackgroundTaskStatus } from 'expo-background-task';
 import { ArticleRepository } from '../../data/repositories/article-repository';
 import { CatalogRepository } from '../../data/repositories/catalog-repository';
@@ -27,6 +28,8 @@ import {
   type PrefetchFileStore,
 } from '../prefetch-service';
 import {
+  configureNotificationHandler,
+  ensureNotificationPermissions,
   syncAllFeeds,
   type LocalNotifier,
   type NotificationPayload,
@@ -884,6 +887,111 @@ describe('runWifiPrefetchAndPurge', () => {
 
     const cacheEntries = await articleRepo.listCacheEntries();
     expect(cacheEntries.map((c) => c.articleId)).toEqual(['art-partial']);
+
+    const partialHtmlBytes = writtenFiles.get(
+      'file:///tmp/cache/musubi-prefetch/art-partial/index.html'
+    )!;
+    const partialHtml = new TextDecoder('utf-8').decode(partialHtmlBytes);
+    expect(partialHtml).toContain('src="img-0.png"');
+    expect(partialHtml).not.toContain('https://cdn.example.com/ok.png');
+    expect(partialHtml).toContain('https://cdn.example.com/missing.png');
+  });
+
+  test('rewrites matched img src and lazy attributes to local relative img-* files and normalizes EUC-JP/base HTML to UTF-8', async () => {
+    const nowMs = 1_700_000_000_000;
+    await settingsRepo.upsertInterestKeyword({
+      id: 'kw-rust',
+      word: 'Rust',
+      enabled: true,
+      createdAt: 100,
+    });
+
+    const article = makeArticle({
+      id: 'art-rewrite',
+      title: 'Rust 日本語ガイド',
+      url: 'https://example.com/articles/rust.html',
+      publishedAt: nowMs - 1_000,
+      fetchedAt: nowMs - 1_000,
+    });
+    await articleRepo.upsertArticles([article]);
+
+    const eucJpHtml = `<!doctype html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=EUC-JP">
+  <base href="https://example.com/articles/">
+  <title>Rust 日本語ガイド</title>
+</head>
+<body>
+  <img src="data:image/png;base64,AAAA" />
+  <img src="/media/hero.jpg" srcset="https://cdn.example.com/hero-2x.jpg 2x" alt="hero" />
+  <img data-src="https://cdn.example.com/lazy1.webp" src="data:image/gif;base64,R0lGOD" />
+  <img data-original="https://cdn.example.com/lazy2.png" alt="orig" />
+  <img src="/media/hero.jpg" />
+  <img src="https://cdn.example.com/4.gif" />
+  <img src="https://cdn.example.com/5.jpg" />
+  <img src="https://cdn.example.com/6.jpg" />
+  <p>日本語テスト記事</p>
+</body>
+</html>`;
+    const eucJpBytes = iconv.encode(eucJpHtml, 'euc-jp');
+
+    const { store, writtenFiles } = createMemoryFileStore();
+    const fetcher: typeof fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url === 'https://example.com/articles/rust.html') {
+        return new Response(new Uint8Array(eucJpBytes), {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      if (
+        url.startsWith('https://example.com/media/') ||
+        url.startsWith('https://cdn.example.com/')
+      ) {
+        return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+
+    const result = await runWifiPrefetchAndPurge({
+      articleRepo,
+      settingsRepo,
+      networkState: {
+        async getNetworkStateAsync() {
+          return { type: 'WIFI', isConnected: true };
+        },
+      },
+      fileStore: store,
+      fetcher,
+      now: () => nowMs,
+    });
+
+    expect(result.prefetchedCount).toBe(1);
+    const savedBytes = writtenFiles.get(
+      'file:///tmp/cache/musubi-prefetch/art-rewrite/index.html'
+    )!;
+    const savedHtml = new TextDecoder('utf-8').decode(savedBytes);
+
+    // UTF-8 decoding + meta charset normalization + base removal
+    expect(savedHtml).toContain('日本語テスト記事');
+    expect(savedHtml).toMatch(/charset=["']?utf-8/i);
+    expect(savedHtml).not.toMatch(/<base\b/i);
+
+    // Local relative image rewrites (up to 5 unique images, duplicates share img-0, lazy attrs promoted to src)
+    expect(savedHtml).toContain('<img src="img-0.jpg" alt="hero" />');
+    expect(savedHtml).not.toContain('hero-2x.jpg');
+    expect(savedHtml).toContain('<img src="img-1.webp" />');
+    expect(savedHtml).not.toContain('data-src=');
+    expect(savedHtml).toContain('<img src="img-2.png" alt="orig" />');
+    expect(savedHtml).not.toContain('data-original=');
+    expect(savedHtml).toContain('<img src="img-3.gif" />');
+    expect(savedHtml).toContain('<img src="img-4.jpg" />');
+    // Duplicate /media/hero.jpg also maps to img-0.jpg
+    expect(savedHtml.match(/src="img-0\.jpg"/g)).toHaveLength(2);
+    // 6th image & inline data: URI stay untouched
+    expect(savedHtml).toContain('src="https://cdn.example.com/6.jpg"');
+    expect(savedHtml).toContain('src="data:image/png;base64,AAAA"');
   });
 });
 
@@ -969,5 +1077,100 @@ describe('background-tasks', () => {
         throw new Error('Disk full');
       })
     ).resolves.toBe(BackgroundTaskResult.Failed);
+  });
+});
+
+describe('notifications setup and permission helpers', () => {
+  test('configureNotificationHandler registers foreground banner/sound handler and safely handles errors', async () => {
+    const setNotificationHandler = jest.fn();
+    await configureNotificationHandler({
+      setNotificationHandler,
+      getPermissionsAsync: async () => ({ granted: true }),
+      requestPermissionsAsync: async () => ({ granted: true }),
+    });
+
+    expect(setNotificationHandler).toHaveBeenCalledTimes(1);
+    const handler = setNotificationHandler.mock.calls[0][0];
+    expect(typeof handler.handleNotification).toBe('function');
+    await expect(handler.handleNotification()).resolves.toEqual({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    });
+
+    await expect(
+      configureNotificationHandler({
+        setNotificationHandler: () => {
+          throw new Error('Native module unavailable');
+        },
+        getPermissionsAsync: async () => ({ granted: false }),
+        requestPermissionsAsync: async () => ({ granted: false }),
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  test('ensureNotificationPermissions requests permission only when undetermined and returns safe false on denial or error', async () => {
+    // Already granted -> no prompt
+    const requestWhenGranted = jest.fn(async () => ({ granted: true }));
+    await expect(
+      ensureNotificationPermissions({
+        IosAuthorizationStatus: { PROVISIONAL: 3 },
+        getPermissionsAsync: async () => ({ granted: true, canAskAgain: true }),
+        requestPermissionsAsync: requestWhenGranted,
+      })
+    ).resolves.toBe(true);
+    expect(requestWhenGranted).not.toHaveBeenCalled();
+
+    // iOS provisional -> already allowed
+    await expect(
+      ensureNotificationPermissions({
+        IosAuthorizationStatus: { PROVISIONAL: 3 },
+        getPermissionsAsync: async () => ({
+          granted: false,
+          canAskAgain: true,
+          ios: { status: 3 },
+        }),
+        requestPermissionsAsync: requestWhenGranted,
+      })
+    ).resolves.toBe(true);
+    expect(requestWhenGranted).not.toHaveBeenCalled();
+
+    // Undetermined -> requests iOS alert/badge/sound and resolves true when granted
+    const requestWhenUndetermined = jest.fn(async () => ({ granted: true }));
+    await expect(
+      ensureNotificationPermissions({
+        IosAuthorizationStatus: { PROVISIONAL: 3 },
+        getPermissionsAsync: async () => ({ granted: false, canAskAgain: true }),
+        requestPermissionsAsync: requestWhenUndetermined,
+      })
+    ).resolves.toBe(true);
+    expect(requestWhenUndetermined).toHaveBeenCalledWith({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+
+    // Denied permanently (canAskAgain: false) -> skips request and returns false
+    const requestWhenDenied = jest.fn(async () => ({ granted: true }));
+    await expect(
+      ensureNotificationPermissions({
+        getPermissionsAsync: async () => ({ granted: false, canAskAgain: false }),
+        requestPermissionsAsync: requestWhenDenied,
+      })
+    ).resolves.toBe(false);
+    expect(requestWhenDenied).not.toHaveBeenCalled();
+
+    // Native module unavailability -> safe false
+    await expect(
+      ensureNotificationPermissions({
+        getPermissionsAsync: async () => {
+          throw new Error('Unavailable in Jest');
+        },
+        requestPermissionsAsync: requestWhenDenied,
+      })
+    ).resolves.toBe(false);
   });
 });

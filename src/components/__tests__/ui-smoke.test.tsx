@@ -494,6 +494,9 @@ describe('MusubiReader UI smoke tests', () => {
       }),
     ]);
 
+    const configureNotificationsFn = jest.fn(async () => {});
+    const requestNotificationPermissionsFn = jest.fn(async () => true);
+
     const runtime: AppRuntimeOverrides = {
       db,
       catalogRepo,
@@ -512,6 +515,8 @@ describe('MusubiReader UI smoke tests', () => {
         purgedMetadataCount: 0,
       }),
       registerBackgroundFn: async () => {},
+      configureNotificationsFn,
+      requestNotificationPermissionsFn,
     };
 
     const root = createRoot();
@@ -523,6 +528,8 @@ describe('MusubiReader UI smoke tests', () => {
       );
     });
     await flushEffects();
+    expect(configureNotificationsFn).toHaveBeenCalledTimes(1);
+    expect(requestNotificationPermissionsFn).not.toHaveBeenCalled();
 
     // Default segment: キーワード一致
     let text = extractAllText(root.container);
@@ -555,6 +562,17 @@ describe('MusubiReader UI smoke tests', () => {
     });
     await flushEffects();
     expect(extractAllText(root.container)).toContain('Expo');
+    expect(requestNotificationPermissionsFn).toHaveBeenCalledTimes(1);
+
+    // Duplicate keyword submission should not re-trigger notification permission prompt
+    await act(async () => {
+      input.props.onChangeText('Expo');
+    });
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'pickup-keyword-add'));
+    });
+    await flushEffects();
+    expect(requestNotificationPermissionsFn).toHaveBeenCalledTimes(1);
 
     // Delete existing keyword kw-1
     await act(async () => {
@@ -747,5 +765,171 @@ describe('MusubiReader UI smoke tests', () => {
       root.unmount();
     });
     close();
+  });
+
+  test('AppDataProvider refreshes remote catalog and compiles remote ad-block rules at startup when configured, falling back safely on error', async () => {
+    const musubiWebViewModule = require('../../../modules/musubi-webview/src') as typeof import('../../../modules/musubi-webview/src');
+    const compileSpy = jest.spyOn(musubiWebViewModule, 'compileAdBlockRules');
+
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const catalogRepo = new CatalogRepository(db);
+    const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+
+    const remoteCatalogJson = {
+      schemaVersion: 1,
+      updatedAt: '2026-11-22T00:00:00Z',
+      packs: [
+        {
+          packId: 'matome-5ch',
+          name: '5chまとめ',
+          description: 'Remote refreshed matome pack',
+          defaultEnabled: true,
+          feeds: [
+            {
+              packId: 'matome-5ch',
+              siteId: 'remote-new-site',
+              name: 'リモート追加まとめ',
+              rssUrl: 'https://remote.example.com/rss.xml',
+              category: 'IT・ガジェット',
+              deprecated: false,
+            },
+          ],
+        },
+      ],
+    };
+    const remoteAdBlockJson = JSON.stringify([
+      {
+        trigger: { 'url-filter': '^https?://remote-ads\\.example\\.jp/' },
+        action: { type: 'block' },
+      },
+    ]);
+
+    const fetchedUrls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      fetchedUrls.push(url);
+      if (url === 'https://static.example.com/catalog.json') {
+        return new Response(JSON.stringify(remoteCatalogJson), { status: 200 });
+      }
+      if (url === 'https://static.example.com/adblock.json') {
+        return new Response(remoteAdBlockJson, { status: 200 });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo,
+      settingsRepo,
+      remoteConfig: {
+        catalogUrl: 'https://static.example.com/catalog.json',
+        adBlockRulesUrl: 'https://static.example.com/adblock.json',
+      },
+      fetcher,
+      adBlockCacheStore: {
+        read: async () => null,
+        write: async () => {},
+      },
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn: async () => ({
+        skippedNotWifi: false,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <SourcesScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(fetchedUrls).toContain('https://static.example.com/catalog.json');
+    expect(fetchedUrls).toContain('https://static.example.com/adblock.json');
+    expect(compileSpy).toHaveBeenCalledTimes(1);
+    expect(compileSpy).toHaveBeenCalledWith(remoteAdBlockJson);
+
+    const refreshedCatalog = await catalogRepo.getEffectiveCatalog();
+    expect(refreshedCatalog.updatedAt).toBe('2026-11-22T00:00:00Z');
+    expect(refreshedCatalog.packs[0].feeds[0].siteId).toBe('remote-new-site');
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
+
+    // Error fallback case: failing remote URLs still compile DEFAULT_ADBLOCK_RULES_JSON and keep bundled catalog
+    compileSpy.mockClear();
+    const { db: db2, close: close2 } = createInMemoryDb();
+    await openDatabase(db2);
+    const catalogRepo2 = new CatalogRepository(db2);
+
+    const failingRuntime: AppRuntimeOverrides = {
+      db: db2,
+      catalogRepo: catalogRepo2,
+      articleRepo: new ArticleRepository(db2),
+      settingsRepo: new SettingsRepository(db2),
+      remoteConfig: {
+        catalogUrl: 'https://static.example.com/broken-catalog.json',
+        adBlockRulesUrl: 'https://static.example.com/broken-adblock.json',
+      },
+      fetcher: async () => new Response('Server Error', { status: 500 }),
+      adBlockCacheStore: {
+        read: async () => null,
+        write: async () => {},
+      },
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn: async () => ({
+        skippedNotWifi: false,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+    };
+
+    const root2 = createRoot();
+    await act(async () => {
+      root2.render(
+        <AppDataProvider runtime={failingRuntime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(compileSpy).toHaveBeenCalledTimes(1);
+    expect(compileSpy).toHaveBeenCalledWith(musubiWebViewModule.DEFAULT_ADBLOCK_RULES_JSON);
+    const fallbackCatalog = await catalogRepo2.getEffectiveCatalog();
+    expect(fallbackCatalog.packs.some((p) => p.packId === 'matome-5ch')).toBe(true);
+
+    compileSpy.mockRestore();
+    await act(async () => {
+      root2.unmount();
+    });
+    close2();
   });
 });

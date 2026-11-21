@@ -48,10 +48,15 @@ let capturedWebViewProps: Record<string, unknown> | null = null;
 
 jest.mock('../../../modules/musubi-webview/src', () => {
   const ReactActual = require('react') as typeof import('react');
+  const actual = jest.requireActual(
+    '../../../modules/musubi-webview/src'
+  ) as typeof import('../../../modules/musubi-webview/src');
   return {
-    DEFAULT_ADBLOCK_RULES_JSON: '[{"trigger":{"url-filter":".*"},"action":{"type":"block"}}]',
+    DEFAULT_ADBLOCK_RULES_JSON: actual.DEFAULT_ADBLOCK_RULES_JSON,
+    resolveAdBlockRules: actual.resolveAdBlockRules,
+    resolveAdBlockRulesJson: actual.resolveAdBlockRulesJson,
     compileAdBlockRules: (rulesJson: string) => mockCompileAdBlockRules(rulesJson),
-    isHttpUrl: (rawUrl: string) => /^https?:\/\//i.test(rawUrl),
+    isHttpUrl: actual.isHttpUrl,
     MusubiWebView: (props: Record<string, unknown>) => {
       capturedWebViewProps = props;
       return ReactActual.createElement('MusubiWebViewMock', props);

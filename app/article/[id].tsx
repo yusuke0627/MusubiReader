@@ -12,8 +12,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  compileAdBlockRules,
-  DEFAULT_ADBLOCK_RULES_JSON,
   isHttpUrl,
   MusubiWebView,
   type MusubiWebViewLoadEndEvent,
@@ -52,10 +50,6 @@ export default function ArticleReaderScreen() {
   const [isTogglingSave, setIsTogglingSave] = useState(false);
 
   const recordedArticleIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    void compileAdBlockRules(DEFAULT_ADBLOCK_RULES_JSON).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!isReady) {

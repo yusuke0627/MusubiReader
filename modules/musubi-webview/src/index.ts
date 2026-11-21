@@ -105,7 +105,7 @@ export function resolveAdBlockRulesJson(remoteJson: string | null): string {
  * falling back to bundled default rules if the input or native compilation fails.
  */
 export async function compileAdBlockRules(
-  rulesJson: string
+  rulesJson: string | null = DEFAULT_ADBLOCK_RULES_JSON
 ): Promise<CompileAdBlockRulesResult> {
   const resolved = resolveAdBlockRules(rulesJson);
   const nativeModule = getMusubiWebViewNativeModule();
