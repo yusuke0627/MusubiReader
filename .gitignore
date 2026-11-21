@@ -1,0 +1,23 @@
+# Superpowers SDD scratch
+.superpowers/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+*.log
+
+# Native builds (Expo CNG)
+ios/
+android/
+
+# OS
+.DS_Store
