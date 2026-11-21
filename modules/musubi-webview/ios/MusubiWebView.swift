@@ -95,6 +95,7 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   private var hasAttemptedOfflineFallback = false
   private var isShowingOfflineFallback = false
   private var isLoadInProgress = false
+  private var pendingTargetLoad = false
   private var pendingLoadGeneration: UInt64 = 0
 
   public required init(appContext: AppContext? = nil) {
@@ -153,6 +154,7 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
       hasAttemptedOfflineFallback = false
       isShowingOfflineFallback = false
       isLoadInProgress = false
+      pendingTargetLoad = true
     }
 
     pendingLoadGeneration &+= 1
@@ -183,7 +185,8 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func triggerLoadOrReload(urlChanged: Bool, adBlockChanged: Bool, targetUrl: String) {
-    if urlChanged {
+    if urlChanged || pendingTargetLoad {
+      pendingTargetLoad = false
       loadCurrentTarget(targetUrl)
     } else if adBlockChanged && !isShowingOfflineFallback {
       webView.reload()
