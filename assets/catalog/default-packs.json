@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-11-21T00:00:00Z",
+  "packs": [
+    {
+      "packId": "matome-5ch",
+      "name": "5chまとめ",
+      "description": "インストール直後からすぐ読める定番5ch/2chまとめパック",
+      "defaultEnabled": true,
+      "feeds": [
+        {
+          "packId": "matome-5ch",
+          "siteId": "it-sokuhou",
+          "name": "IT速報",
+          "rssUrl": "https://blog.livedoor.jp/itsoku/index.rdf",
+          "category": "IT・ガジェット",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "gadget-2ch",
+          "name": "ガジェット2ch",
+          "rssUrl": "https://gadget2ch.com/feed/",
+          "category": "IT・ガジェット",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "alfalfa",
+          "name": "アルファルファモザイク",
+          "rssUrl": "https://alfalfalfa.com/index.rdf",
+          "category": "ニュース・雑談",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "himasoku",
+          "name": "暇人＼(^o^)／速報",
+          "rssUrl": "https://himasoku.com/index.rdf",
+          "category": "ニュース・雑談",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "hamusoku",
+          "name": "ハムスター速報",
+          "rssUrl": "https://hamusoku.com/index.rdf",
+          "category": "ニュース・雑談",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "lifehack2ch",
+          "name": "ライフハックちゃんねる弐式",
+          "rssUrl": "https://lifehack2ch.livedoor.biz/index.rdf",
+          "category": "ライフスタイル",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "kinisoku",
+          "name": "キニ速",
+          "rssUrl": "https://blog.livedoor.jp/kinisoku/index.rdf",
+          "category": "ライフスタイル",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "nwknews",
+          "name": "哲学ニュースnwk",
+          "rssUrl": "https://blog.livedoor.jp/nwknews/index.rdf",
+          "category": "教養・雑学",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "packId": "tech-jp",
+      "name": "Tech",
+      "description": "日本の技術ブログ・開発ニュースパック",
+      "defaultEnabled": false,
+      "feeds": [
+        {
+          "packId": "tech-jp",
+          "siteId": "hatena-it",
+          "name": "はてなブックマーク テクノロジー",
+          "rssUrl": "https://b.hatena.ne.jp/hotentry/it.rss",
+          "category": "エンジニア",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "zenn-trend",
+          "name": "Zenn トレンド",
+          "rssUrl": "https://zenn.dev/feed",
+          "category": "開発・技術",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "qiita-popular",
+          "name": "Qiita トレンド",
+          "rssUrl": "https://qiita.com/popular-items/feed.atom",
+          "category": "開発・技術",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "publickey",
+          "name": "Publickey",
+          "rssUrl": "https://www.publickey1.jp/atom.xml",
+          "category": "クラウド・インフラ",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "gihyo",
+          "name": "gihyo.jp",
+          "rssUrl": "https://gihyo.jp/feed/rss2",
+          "category": "エンジニア",
+          "deprecated": false
+        }
+      ]
+    }
+  ]
+}
