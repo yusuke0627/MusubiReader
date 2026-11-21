@@ -1,0 +1,19 @@
+{
+  "name": "musubi-webview",
+  "version": "1.0.0",
+  "description": "Thin Swift WKWebView module with WKContentRuleList ad-blocking and offline HTML fallback for MusubiReader",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
