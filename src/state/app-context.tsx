@@ -60,6 +60,7 @@ interface ResolvedRuntime {
 
 export interface AppDataContextValue {
   isReady: boolean;
+  initError: string | null;
   catalog: RemoteCatalog | null;
   resolvedFeeds: ResolvedFeed[];
   packSettings: UserPackSetting[];
@@ -182,6 +183,7 @@ export function AppDataProvider({
   const prefetchInFlightRef = useRef<Promise<WifiPrefetchAndPurgeResult | null> | null>(null);
 
   const [isReady, setIsReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<RemoteCatalog | null>(null);
   const [resolvedFeeds, setResolvedFeeds] = useState<ResolvedFeed[]>([]);
   const [packSettings, setPackSettings] = useState<UserPackSetting[]>([]);
@@ -338,26 +340,41 @@ export function AppDataProvider({
     let cancelled = false;
 
     (async () => {
-      const rt = await buildRuntime(runtimeOverrides);
-      if (cancelled || !mountedRef.current) {
-        return;
-      }
-      runtimeRef.current = rt;
+      try {
+        if (mountedRef.current) {
+          setInitError(null);
+        }
+        const rt = await buildRuntime(runtimeOverrides);
+        if (cancelled || !mountedRef.current) {
+          return;
+        }
+        runtimeRef.current = rt;
 
-      // Immediately seed bundled default-packs.json & load local data first so UI renders immediately.
-      await loadSnapshot(rt);
-      await refreshNetworkState();
-      if (cancelled || !mountedRef.current) {
-        return;
-      }
-      setIsReady(true);
+        // Immediately seed bundled default-packs.json & load local data first so UI renders immediately.
+        await loadSnapshot(rt);
+        await refreshNetworkState();
+        if (cancelled || !mountedRef.current) {
+          return;
+        }
+        setIsReady(true);
 
-      // Register OS background tasks and trigger non-blocking initial sync.
-      rt.registerBackgroundFn().catch(() => {});
-      void (async () => {
-        await syncNow();
-        await prefetchNow();
-      })();
+        // Register OS background tasks and trigger non-blocking initial sync.
+        rt.registerBackgroundFn().catch(() => {});
+        void (async () => {
+          await syncNow();
+          await prefetchNow();
+        })();
+      } catch (err) {
+        runtimeRef.current = null;
+        if (!cancelled && mountedRef.current) {
+          const message =
+            err instanceof Error && err.message
+              ? err.message
+              : 'データベースの初期化に失敗しました';
+          setInitError(message);
+          setIsReady(true);
+        }
+      }
     })();
 
     return () => {
@@ -463,8 +480,11 @@ export function AppDataProvider({
         updatedAt: rt.now(),
       });
       await loadSnapshot(rt);
+      if (enabled) {
+        void syncNow();
+      }
     },
-    [loadSnapshot]
+    [loadSnapshot, syncNow]
   );
 
   const addInterestKeyword = useCallback(
@@ -629,6 +649,7 @@ export function AppDataProvider({
   const value = useMemo<AppDataContextValue>(
     () => ({
       isReady,
+      initError,
       catalog,
       resolvedFeeds,
       packSettings,
@@ -664,6 +685,7 @@ export function AppDataProvider({
     }),
     [
       isReady,
+      initError,
       catalog,
       resolvedFeeds,
       packSettings,

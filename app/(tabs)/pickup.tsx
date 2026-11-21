@@ -27,6 +27,7 @@ export default function PickupScreen() {
   const colors = useThemeColors();
   const {
     isReady,
+    initError,
     interestKeywords,
     isSyncing,
     dataVersion,
@@ -44,7 +45,7 @@ export default function PickupScreen() {
   const [items, setItems] = useState<PickupDisplayItem[]>([]);
 
   const loadItems = useCallback(async () => {
-    if (!isReady) {
+    if (!isReady || initError) {
       return;
     }
     if (segment === 'matched') {
@@ -54,7 +55,7 @@ export default function PickupScreen() {
       const saved = await listSavedArticles();
       setItems(saved.map((article) => ({ article })));
     }
-  }, [isReady, segment, listPickupArticles, listSavedArticles]);
+  }, [isReady, initError, segment, listPickupArticles, listSavedArticles]);
 
   useEffect(() => {
     void loadItems();

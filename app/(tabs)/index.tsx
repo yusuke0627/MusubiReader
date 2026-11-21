@@ -22,6 +22,7 @@ export default function HomeScreen() {
   const colors = useThemeColors();
   const {
     isReady,
+    initError,
     catalog,
     resolvedFeeds,
     packSettings,
@@ -98,7 +99,7 @@ export default function HomeScreen() {
   }, [categories, selectedCategory]);
 
   const loadArticles = useCallback(async () => {
-    if (!isReady) {
+    if (!isReady || initError) {
       return;
     }
     setIsLoadingArticles(true);
@@ -115,6 +116,7 @@ export default function HomeScreen() {
     }
   }, [
     isReady,
+    initError,
     selectedPackId,
     selectedCategory,
     listArticlesByPackAndCategory,
@@ -152,6 +154,19 @@ export default function HomeScreen() {
   );
 
   const renderEmpty = () => {
+    if (initError) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyTitle, { color: colors.danger }]}>
+            データの読み込みに失敗しました
+          </Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            {initError}
+          </Text>
+        </View>
+      );
+    }
+
     if (!isReady || isLoadingArticles) {
       return (
         <View style={styles.emptyContainer}>

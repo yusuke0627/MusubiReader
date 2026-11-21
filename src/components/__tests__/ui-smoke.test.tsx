@@ -591,17 +591,18 @@ describe('MusubiReader UI smoke tests', () => {
     });
 
     const deletedPaths: string[] = [];
+    const syncFn = jest.fn(async () => ({
+      fetchedFeeds: 0,
+      failedFeeds: 0,
+      newArticles: 0,
+      newKeywordMatches: [],
+    }));
     const runtime: AppRuntimeOverrides = {
       db,
       catalogRepo,
       articleRepo,
       settingsRepo,
-      syncFn: async () => ({
-        fetchedFeeds: 0,
-        failedFeeds: 0,
-        newArticles: 0,
-        newKeywordMatches: [],
-      }),
+      syncFn,
       prefetchFn: async () => ({
         skippedNotWifi: false,
         prefetchedCount: 0,
@@ -629,13 +630,21 @@ describe('MusubiReader UI smoke tests', () => {
     expect(text).toContain('Tech');
     expect(text).toContain('アルファルファモザイク');
 
-    // Toggle Tech pack ON
+    // Toggle Tech pack ON triggers syncFn; toggling OFF does not
+    const syncCallsBeforeEnable = syncFn.mock.calls.length;
     await act(async () => {
       toggleSwitchNode(findByTestId(root.container, 'pack-toggle-tech-jp'), true);
     });
     await flushEffects();
     const techSetting = await settingsRepo.getPackSetting('tech-jp');
     expect(techSetting?.enabled).toBe(true);
+    expect(syncFn.mock.calls.length).toBe(syncCallsBeforeEnable + 1);
+
+    await act(async () => {
+      toggleSwitchNode(findByTestId(root.container, 'pack-toggle-tech-jp'), false);
+    });
+    await flushEffects();
+    expect(syncFn.mock.calls.length).toBe(syncCallsBeforeEnable + 1);
 
     // Invalid RSS URL shows validation error and does not persist
     await act(async () => {
@@ -697,6 +706,42 @@ describe('MusubiReader UI smoke tests', () => {
     await flushEffects();
     expect(await articleRepo.listCacheEntries()).toHaveLength(0);
     expect(deletedPaths.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
+  });
+
+  test('AppDataProvider catches startup initialization failure and surfaces an error state instead of staying stuck loading', async () => {
+    const { db, close } = createInMemoryDb();
+    const catalogRepo = new CatalogRepository(db);
+    jest
+      .spyOn(catalogRepo, 'getEffectiveCatalog')
+      .mockRejectedValueOnce(new Error('SQLite init failed'));
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo: new ArticleRepository(db),
+      settingsRepo: new SettingsRepository(db),
+      registerBackgroundFn: async () => {},
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+
+    const text = extractAllText(root.container);
+    expect(text).toContain('データの読み込みに失敗しました');
+    expect(text).toContain('SQLite init failed');
+    expect(text).not.toContain('記事を読み込み中です…');
 
     await act(async () => {
       root.unmount();
