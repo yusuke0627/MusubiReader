@@ -1,5 +1,7 @@
 import { DEFAULT_ADBLOCK_RULES_JSON } from '../../../modules/musubi-webview/src';
 import {
+  DEFAULT_REMOTE_ADBLOCK_RULES_URL,
+  DEFAULT_REMOTE_CATALOG_URL,
   fetchAndResolveAdBlockRules,
   getRemoteConfig,
   syncAndCompileAdBlockRules,
@@ -24,16 +26,23 @@ describe('remote-config', () => {
     }
   });
 
-  test('getRemoteConfig validates optional EXPO_PUBLIC_* URLs and ignores blank or non-HTTP(S) values', () => {
+  test('getRemoteConfig defaults to GitHub Pages URLs, allows disabling, and validates overrides', () => {
     delete process.env.EXPO_PUBLIC_CATALOG_URL;
     delete process.env.EXPO_PUBLIC_ADBLOCK_RULES_URL;
+    expect(getRemoteConfig()).toEqual({
+      catalogUrl: DEFAULT_REMOTE_CATALOG_URL,
+      adBlockRulesUrl: DEFAULT_REMOTE_ADBLOCK_RULES_URL,
+    });
+
+    process.env.EXPO_PUBLIC_CATALOG_URL = '   ';
+    process.env.EXPO_PUBLIC_ADBLOCK_RULES_URL = 'off';
     expect(getRemoteConfig()).toEqual({
       catalogUrl: null,
       adBlockRulesUrl: null,
     });
 
-    process.env.EXPO_PUBLIC_CATALOG_URL = '   ';
-    process.env.EXPO_PUBLIC_ADBLOCK_RULES_URL = 'javascript:alert(1)';
+    process.env.EXPO_PUBLIC_CATALOG_URL = 'javascript:alert(1)';
+    process.env.EXPO_PUBLIC_ADBLOCK_RULES_URL = 'not-a-url';
     expect(getRemoteConfig()).toEqual({
       catalogUrl: null,
       adBlockRulesUrl: null,
