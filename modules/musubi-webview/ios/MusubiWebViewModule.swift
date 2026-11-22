@@ -5,14 +5,15 @@ public final class MusubiWebViewModule: Module {
     Name("MusubiWebView")
 
     AsyncFunction("compileAdBlockRules") { (rulesJson: String, fallbackRulesJson: String?, promise: Promise) in
-      MusubiAdBlockRuleStore.shared.compileRules(
-        primaryJson: rulesJson,
-        fallbackJson: fallbackRulesJson
-      ) { result in
-        promise.resolve(result)
+      Task { @MainActor in
+        MusubiAdBlockRuleStore.shared.compileRules(
+          primaryJson: rulesJson,
+          fallbackJson: fallbackRulesJson
+        ) { result in
+          promise.resolve(result)
+        }
       }
     }
-    .runOnQueue(.main)
 
     View(MusubiWebView.self) {
       Events("onLoadStart", "onLoadEnd")
