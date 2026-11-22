@@ -178,6 +178,7 @@ export default function SourcesScreen() {
               </View>
               <Switch
                 testID={`pack-toggle-${pack.packId}`}
+                accessibilityLabel={`${pack.name}を有効にする`}
                 value={enabled}
                 onValueChange={(nextValue) =>
                   void setPackEnabled(pack.packId, nextValue)

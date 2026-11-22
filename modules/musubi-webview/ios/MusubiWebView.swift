@@ -25,7 +25,7 @@ final class MusubiAdBlockRuleStore {
 
     store.lookUpContentRuleList(forIdentifier: Self.ruleListIdentifier) { [weak self] ruleList, _ in
       Task { @MainActor in
-        if let ruleList {
+        if self?.cachedRuleList == nil, let ruleList {
           self?.cachedRuleList = ruleList
         }
         completion(self?.cachedRuleList)
@@ -469,6 +469,9 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
     }
 
     if scheme == "http" || scheme == "https" || scheme == "about" || scheme == "data" || scheme == "blob" {
+      if isShowingOfflineFallback && (scheme == "http" || scheme == "https") && (navigationAction.targetFrame?.isMainFrame ?? true) {
+        isShowingOfflineFallback = false
+      }
       decisionHandler(.allow)
       return
     }

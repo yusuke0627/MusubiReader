@@ -707,4 +707,77 @@ describe('SettingsRepository', () => {
       raw.close();
     }
   });
+
+  test('recordRead updates prefetch_cache.last_accessed_at for true LRU ordering', async () => {
+    const { adapter, raw } = createInMemorySQLiteAdapter();
+    try {
+      const db = await openDatabase(adapter);
+      const articleRepo = new ArticleRepository(db);
+
+      const a1 = makeArticle({ id: 'lru-1', publishedAt: 1000 });
+      const a2 = makeArticle({ id: 'lru-2', publishedAt: 2000 });
+      await articleRepo.upsertArticles([a1, a2]);
+
+      await articleRepo.upsertCacheEntry({
+        articleId: 'lru-1',
+        localPath: '/cache/lru-1/index.html',
+        sizeBytes: 1024,
+        cachedAt: 1000,
+        lastAccessedAt: 1000,
+      });
+      await articleRepo.upsertCacheEntry({
+        articleId: 'lru-2',
+        localPath: '/cache/lru-2/index.html',
+        sizeBytes: 1024,
+        cachedAt: 2000,
+        lastAccessedAt: 2000,
+      });
+
+      await articleRepo.recordRead('lru-1', a1.category, 5000);
+
+      const entries = await articleRepo.listCacheEntries();
+      expect(entries.map((e) => e.articleId)).toEqual(['lru-2', 'lru-1']);
+      expect(entries[1].lastAccessedAt).toBe(5000);
+    } finally {
+      raw.close();
+    }
+  });
+
+  test('deleteUnsavedArticlesBySite removes unsaved articles and cache while protecting saved articles', async () => {
+    const { adapter, raw } = createInMemorySQLiteAdapter();
+    try {
+      const db = await openDatabase(adapter);
+      const articleRepo = new ArticleRepository(db);
+
+      await articleRepo.upsertArticles([
+        makeArticle({ id: 'c-unsaved', siteId: 'custom-site', isSaved: false }),
+        makeArticle({ id: 'c-saved', siteId: 'custom-site', isSaved: true }),
+        makeArticle({ id: 'other-site-art', siteId: 'other-site', isSaved: false }),
+      ]);
+      await articleRepo.upsertCacheEntry({
+        articleId: 'c-unsaved',
+        localPath: '/cache/c-unsaved/index.html',
+        sizeBytes: 512,
+        cachedAt: 1000,
+        lastAccessedAt: 1000,
+      });
+      await articleRepo.upsertCacheEntry({
+        articleId: 'c-saved',
+        localPath: '/cache/c-saved/index.html',
+        sizeBytes: 512,
+        cachedAt: 1000,
+        lastAccessedAt: 1000,
+      });
+
+      await articleRepo.deleteUnsavedArticlesBySite('custom-site');
+
+      expect(await articleRepo.getById('c-unsaved')).toBeNull();
+      expect(await articleRepo.getCacheEntry('c-unsaved')).toBeNull();
+      expect(await articleRepo.getById('c-saved')).not.toBeNull();
+      expect(await articleRepo.getCacheEntry('c-saved')).not.toBeNull();
+      expect(await articleRepo.getById('other-site-art')).not.toBeNull();
+    } finally {
+      raw.close();
+    }
+  });
 });
