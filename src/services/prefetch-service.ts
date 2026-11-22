@@ -23,7 +23,25 @@ import {
 
 export const PREFETCH_DIR_NAME = 'musubi-prefetch';
 export const MAX_PRIMARY_IMAGES = 5;
+export const MAX_INLINE_STYLESHEETS = 6;
 export const DEFAULT_PREFETCH_BATCH_SIZE = 20;
+export const MOBILE_SAFARI_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+
+const MOBILE_HTML_HEADERS: Record<string, string> = {
+  'User-Agent': MOBILE_SAFARI_USER_AGENT,
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'ja-JP,ja;q=0.9',
+};
+
+const MOBILE_ASSET_HEADERS: Record<string, string> = {
+  'User-Agent': MOBILE_SAFARI_USER_AGENT,
+};
+
+const LINK_TAG_REGEX = /<link\b[^>]*>/gi;
+const CSS_URL_REGEX = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+const SAFE_MOBILE_STYLE_TAG =
+  '<style data-musubi-safe="1">html,body{max-width:100%!important;overflow-x:hidden!important;}img,video{max-width:100%!important;height:auto!important;}</style>';
 
 export interface NetworkStateLike {
   type?: string;
@@ -220,14 +238,86 @@ export function decodeHtmlBytes(
   return decodeUtf8(bytes);
 }
 
+function rewriteCssRelativeUrls(css: string, stylesheetUrl: string): string {
+  return css.replace(CSS_URL_REGEX, (match, quote: string, rawRef: string) => {
+    const trimmed = rawRef.trim();
+    if (
+      !trimmed ||
+      trimmed.startsWith('data:') ||
+      trimmed.startsWith('#') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('https://')
+    ) {
+      return match;
+    }
+    try {
+      const absolute = new URL(trimmed, stylesheetUrl).toString();
+      return `url(${quote}${absolute}${quote})`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+function isStylesheetLinkTag(tag: string): boolean {
+  const rel = extractAttribute(tag, 'rel');
+  if (!rel) {
+    return false;
+  }
+  return rel
+    .toLowerCase()
+    .split(/\s+/)
+    .includes('stylesheet');
+}
+
+/**
+ * Extracts up to `limit` unique HTTP(S) stylesheet URLs from `<link rel="stylesheet">` tags.
+ */
+export function extractStylesheetUrls(
+  html: string,
+  baseUrl: string,
+  limit: number = MAX_INLINE_STYLESHEETS
+): string[] {
+  const safeLimit = Math.max(0, Math.floor(limit));
+  if (safeLimit === 0 || !html) {
+    return [];
+  }
+  const effectiveBase = resolveDocumentBaseUrl(html, baseUrl);
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  for (const match of html.matchAll(LINK_TAG_REGEX)) {
+    if (urls.length >= safeLimit) {
+      break;
+    }
+    const tag = match[0];
+    if (!isStylesheetLinkTag(tag)) {
+      continue;
+    }
+    const href = extractAttribute(tag, 'href');
+    if (!href) {
+      continue;
+    }
+    const resolved = resolveImageCandidateUrl(href, effectiveBase);
+    if (resolved && !seen.has(resolved)) {
+      seen.add(resolved);
+      urls.push(resolved);
+    }
+  }
+
+  return urls;
+}
+
 /**
  * Rewrites matched `<img>` tags in cached HTML to reference locally downloaded
- * relative `img-*` files, removes `<base>` tags, and normalizes charset meta tags to UTF-8.
+ * relative `img-*` files, inlines downloaded stylesheets, removes `<base>` / scripts / iframes,
+ * normalizes charset meta tags to UTF-8, and ensures a mobile viewport + responsive guard CSS.
  */
 export function rewriteCachedHtml(
   html: string,
   baseUrl: string,
-  localFilesByUrl: ReadonlyMap<string, string>
+  localFilesByUrl: ReadonlyMap<string, string>,
+  inlinedStylesByUrl?: ReadonlyMap<string, string>
 ): string {
   let updated = html.replace(IMG_TAG_REGEX, (tag) => {
     const resolvedUrl = resolveFirstImageUrlFromTag(tag, baseUrl);
@@ -241,6 +331,29 @@ export function rewriteCachedHtml(
     return normalizeImgTagToLocal(tag, localFilename);
   });
 
+  updated = updated.replace(LINK_TAG_REGEX, (tag) => {
+    if (!isStylesheetLinkTag(tag)) {
+      return tag;
+    }
+    const href = extractAttribute(tag, 'href');
+    if (!href) {
+      return tag;
+    }
+    const resolved = resolveImageCandidateUrl(href, baseUrl);
+    if (resolved && inlinedStylesByUrl?.has(resolved)) {
+      const css = inlinedStylesByUrl.get(resolved) ?? '';
+      const safeCss = css.replace(/<\/style/gi, '<\\/style');
+      return `<style data-musubi-inlined="1">${safeCss}</style>`;
+    }
+    if (resolved) {
+      return tag.replace(
+        /(\shref\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/i,
+        `$1"${resolved}"`
+      );
+    }
+    return tag;
+  });
+
   // Remove <base> tags so relative local filenames (`img-0.*`) resolve inside the cache folder.
   updated = updated.replace(BASE_TAG_REGEX, '');
 
@@ -250,7 +363,12 @@ export function rewriteCachedHtml(
   updated = updated.replace(/<iframe\b[^>]*\/?>/gi, '');
 
   let hasCharsetMeta = false;
+  let hasViewportMeta = false;
   updated = updated.replace(META_TAG_REGEX, (tag) => {
+    const nameAttr = extractAttribute(tag, 'name')?.toLowerCase();
+    if (nameAttr === 'viewport') {
+      hasViewportMeta = true;
+    }
     if (/\bcharset\s*=/i.test(tag)) {
       hasCharsetMeta = true;
       return tag.replace(/(charset\s*=\s*["']?)[a-zA-Z0-9._-]+/gi, '$1utf-8');
@@ -258,20 +376,30 @@ export function rewriteCachedHtml(
     return tag;
   });
 
+  const headInjections: string[] = [];
   if (!hasCharsetMeta) {
-    if (/<head\b[^>]*>/i.test(updated)) {
-      updated = updated.replace(
-        /<head\b[^>]*>/i,
-        (match) => `${match}<meta charset="utf-8">`
-      );
-    } else if (/<html\b[^>]*>/i.test(updated)) {
-      updated = updated.replace(
-        /<html\b[^>]*>/i,
-        (match) => `${match}<head><meta charset="utf-8"></head>`
-      );
-    } else {
-      updated = `<meta charset="utf-8">${updated}`;
-    }
+    headInjections.push('<meta charset="utf-8">');
+  }
+  if (!hasViewportMeta) {
+    headInjections.push(
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+    );
+  }
+  headInjections.push(SAFE_MOBILE_STYLE_TAG);
+  const injectionHtml = headInjections.join('');
+
+  if (/<head\b[^>]*>/i.test(updated)) {
+    updated = updated.replace(
+      /<head\b[^>]*>/i,
+      (match) => `${match}${injectionHtml}`
+    );
+  } else if (/<html\b[^>]*>/i.test(updated)) {
+    updated = updated.replace(
+      /<html\b[^>]*>/i,
+      (match) => `${match}<head>${injectionHtml}</head>`
+    );
+  } else {
+    updated = `${injectionHtml}${updated}`;
   }
 
   return updated;
@@ -386,7 +514,9 @@ async function prefetchSingleArticle(
   nowMs: number
 ): Promise<{ articleId: string; localPath: string; sizeBytes: number } | null> {
   try {
-    const htmlRes = await fetchWithTimeout(article.url, fetcher, timeoutMs);
+    const htmlRes = await fetchWithTimeout(article.url, fetcher, timeoutMs, {
+      headers: MOBILE_HTML_HEADERS,
+    });
     if (!htmlRes.ok) {
       return null;
     }
@@ -397,7 +527,13 @@ async function prefetchSingleArticle(
     const htmlPath = `${articleDir}index.html`;
 
     const htmlText = decodeHtmlBytes(htmlBytes, contentType);
-    const effectiveBaseUrl = resolveDocumentBaseUrl(htmlText, article.url);
+    const finalHtmlUrl = htmlRes.url || article.url;
+    const effectiveBaseUrl = resolveDocumentBaseUrl(htmlText, finalHtmlUrl);
+    const stylesheetUrls = extractStylesheetUrls(
+      htmlText,
+      effectiveBaseUrl,
+      MAX_INLINE_STYLESHEETS
+    );
     const imageUrls = extractPrimaryImageUrls(
       htmlText,
       effectiveBaseUrl,
@@ -405,12 +541,36 @@ async function prefetchSingleArticle(
     );
 
     let totalBytes = 0;
+    const inlinedStylesByUrl = new Map<string, string>();
     const localFilesByUrl = new Map<string, string>();
+
+    for (const cssUrl of stylesheetUrls) {
+      try {
+        const cssRes = await fetchWithTimeout(cssUrl, fetcher, timeoutMs, {
+          headers: MOBILE_ASSET_HEADERS,
+        });
+        if (!cssRes.ok) {
+          continue;
+        }
+        const cssBytes = new Uint8Array(await cssRes.arrayBuffer());
+        const cssContentType = cssRes.headers.get('content-type') ?? undefined;
+        const decodedCss = decodeHtmlBytes(cssBytes, cssContentType);
+        const rewrittenCss = rewriteCssRelativeUrls(
+          decodedCss,
+          cssRes.url || cssUrl
+        );
+        inlinedStylesByUrl.set(cssUrl, rewrittenCss);
+      } catch {
+        // Individual stylesheet failure should not abort caching the article.
+      }
+    }
 
     for (let i = 0; i < imageUrls.length; i += 1) {
       const imageUrl = imageUrls[i];
       try {
-        const imgRes = await fetchWithTimeout(imageUrl, fetcher, timeoutMs);
+        const imgRes = await fetchWithTimeout(imageUrl, fetcher, timeoutMs, {
+          headers: MOBILE_ASSET_HEADERS,
+        });
         if (!imgRes.ok) {
           continue;
         }
@@ -430,7 +590,8 @@ async function prefetchSingleArticle(
     const rewrittenHtml = rewriteCachedHtml(
       htmlText,
       effectiveBaseUrl,
-      localFilesByUrl
+      localFilesByUrl,
+      inlinedStylesByUrl
     );
     totalBytes += await fileStore.writeFile(htmlPath, encodeUtf8(rewrittenHtml));
 

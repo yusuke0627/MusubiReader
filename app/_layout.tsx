@@ -59,7 +59,11 @@ function RootLayoutNav() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="article/[id]"
-          options={{ title: '記事', headerBackTitle: '戻る' }}
+          options={{
+            title: '記事',
+            headerBackTitle: '戻る',
+            headerTransparent: false,
+          }}
         />
         <Stack.Screen
           name="benchmark"
