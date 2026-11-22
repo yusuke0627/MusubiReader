@@ -37,6 +37,7 @@ interface ActiveRun {
 }
 
 const MAX_BENCHMARK_ARTICLES = 3;
+const BENCHMARK_STEP_TIMEOUT_MS = 15_000;
 
 function formatNetworkLabel(type: string | undefined): string {
   switch (type) {
@@ -67,11 +68,15 @@ export default function BenchmarkScreen() {
   const [samples, setSamples] = useState<BenchmarkSample[]>([]);
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runCounter, setRunCounter] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [timedOutKeys, setTimedOutKeys] = useState<Record<string, boolean>>({});
 
   const activeRunRef = useRef<ActiveRun | null>(null);
   activeRunRef.current = activeRun;
   const targetsRef = useRef<BenchmarkTarget[]>([]);
   targetsRef.current = targets;
+  const runCounterRef = useRef(0);
+  runCounterRef.current = runCounter;
 
   const networkLabel = useMemo(
     () => formatNetworkLabel(networkState?.type),
@@ -108,6 +113,8 @@ export default function BenchmarkScreen() {
     }
     const nextRunNumber = runCounter + 1;
     setRunCounter(nextRunNumber);
+    setElapsedMs(0);
+    setTimedOutKeys({});
     setSamples(
       targets.map((t) => ({
         articleId: t.article.id,
@@ -128,17 +135,26 @@ export default function BenchmarkScreen() {
     });
   }, [targets, activeRun, runCounter, networkLabel]);
 
-  const handleLoadEnd = useCallback(
-    (event: NativeSyntheticEvent<MusubiWebViewLoadEndEvent>) => {
-      const current = activeRunRef.current;
-      if (!current) {
+  const stopBenchmark = useCallback(() => {
+    setActiveRun(null);
+    setElapsedMs(0);
+  }, []);
+
+  const advanceRun = useCallback(
+    (
+      current: ActiveRun,
+      measuredMs: number,
+      success: boolean,
+      timedOut: boolean
+    ) => {
+      if (activeRunRef.current?.runKey !== current.runKey) {
         return;
       }
-      const payload = event.nativeEvent;
-      const measuredMs =
-        typeof payload.durationMs === 'number' && payload.durationMs > 0
-          ? payload.durationMs
-          : Math.max(0, Date.now() - current.startedAtMs);
+
+      if (timedOut) {
+        const key = `${targetsRef.current[current.index]?.article.id ?? current.index}:${current.mode}`;
+        setTimedOutKeys((prev) => ({ ...prev, [key]: true }));
+      }
 
       setSamples((prev) =>
         prev.map((item, idx) => {
@@ -149,17 +165,18 @@ export default function BenchmarkScreen() {
             return {
               ...item,
               cacheMs: measuredMs,
-              cacheSuccess: Boolean(payload.success),
+              cacheSuccess: success,
             };
           }
           return {
             ...item,
             networkMs: measuredMs,
-            networkSuccess: Boolean(payload.success),
+            networkSuccess: success,
           };
         })
       );
 
+      setElapsedMs(0);
       if (current.mode === 'cache') {
         setActiveRun({
           index: current.index,
@@ -173,7 +190,7 @@ export default function BenchmarkScreen() {
           setActiveRun({
             index: nextIndex,
             mode: 'cache',
-            runKey: `bench-${runCounter}-${nextIndex}-cache`,
+            runKey: `bench-${runCounterRef.current}-${nextIndex}-cache`,
             startedAtMs: Date.now(),
           });
         } else {
@@ -181,7 +198,42 @@ export default function BenchmarkScreen() {
         }
       }
     },
-    [runCounter]
+    []
+  );
+
+  useEffect(() => {
+    if (!activeRun) {
+      return;
+    }
+    const current = activeRun;
+    const ticker = setInterval(() => {
+      setElapsedMs(Math.max(0, Date.now() - current.startedAtMs));
+    }, 200);
+    const timeout = setTimeout(() => {
+      advanceRun(current, BENCHMARK_STEP_TIMEOUT_MS, false, true);
+    }, BENCHMARK_STEP_TIMEOUT_MS);
+
+    return () => {
+      clearInterval(ticker);
+      clearTimeout(timeout);
+    };
+  }, [activeRun, advanceRun]);
+
+  const handleLoadEnd = useCallback(
+    (event: NativeSyntheticEvent<MusubiWebViewLoadEndEvent>) => {
+      const current = activeRunRef.current;
+      if (!current) {
+        return;
+      }
+      const payload = event.nativeEvent;
+      const measuredMs =
+        typeof payload.durationMs === 'number' && payload.durationMs > 0
+          ? payload.durationMs
+          : Math.max(0, Date.now() - current.startedAtMs);
+
+      advanceRun(current, measuredMs, Boolean(payload.success), false);
+    },
+    [advanceRun]
   );
 
   const summary = useMemo(() => computeBenchmarkSummary(samples), [samples]);
@@ -233,10 +285,26 @@ export default function BenchmarkScreen() {
               {activeRun
                 ? `計測中 (${activeRun.index + 1}/${targets.length}: ${
                     activeRun.mode === 'cache' ? 'キャッシュ' : '直読み'
-                  })…`
+                  } ${(elapsedMs / 1000).toFixed(1)}s)…`
                 : 'ベンチマークを開始'}
             </Text>
           </Pressable>
+
+          {activeRun ? (
+            <Pressable
+              testID="stop-benchmark-button"
+              accessibilityRole="button"
+              onPress={stopBenchmark}
+              style={[
+                styles.secondaryBtn,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Text style={[styles.secondaryBtnText, { color: colors.danger }]}>
+                中止
+              </Text>
+            </Pressable>
+          ) : null}
 
           {targets.length === 0 ? (
             <Pressable
@@ -320,13 +388,17 @@ export default function BenchmarkScreen() {
               <Text style={[styles.metricLine, { color: colors.text }]}>
                 先読み利用:{' '}
                 {sample.cacheMs !== null
-                  ? `${sample.cacheMs} ms${sample.cacheSuccess ? '' : ' (失敗)'}`
+                  ? timedOutKeys[`${sample.articleId}:cache`]
+                    ? `> ${sample.cacheMs} ms (タイムアウト)`
+                    : `${sample.cacheMs} ms${sample.cacheSuccess ? '' : ' (失敗)'}`
                   : '計測待ち'}
               </Text>
               <Text style={[styles.metricLine, { color: colors.text }]}>
                 直読み ({sample.networkLabel}):{' '}
                 {sample.networkMs !== null
-                  ? `${sample.networkMs} ms${sample.networkSuccess ? '' : ' (失敗)'}`
+                  ? timedOutKeys[`${sample.articleId}:network`]
+                    ? `> ${sample.networkMs} ms (タイムアウト)`
+                    : `${sample.networkMs} ms${sample.networkSuccess ? '' : ' (失敗)'}`
                   : '計測待ち'}
               </Text>
               {pair.savedMs !== null ? (

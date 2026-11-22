@@ -244,6 +244,11 @@ export function rewriteCachedHtml(
   // Remove <base> tags so relative local filenames (`img-0.*`) resolve inside the cache folder.
   updated = updated.replace(BASE_TAG_REGEX, '');
 
+  // Strip external scripts and iframes so cached local HTML renders immediately without slow network stalls.
+  updated = updated.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  updated = updated.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
+  updated = updated.replace(/<iframe\b[^>]*\/?>/gi, '');
+
   let hasCharsetMeta = false;
   updated = updated.replace(META_TAG_REGEX, (tag) => {
     if (/\bcharset\s*=/i.test(tag)) {
