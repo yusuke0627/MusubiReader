@@ -9,6 +9,12 @@ import { DEFAULT_FETCH_TIMEOUT_MS, fetchWithTimeout } from './fetch-utils';
 
 const ADBLOCK_RULES_CACHE_FILENAME = 'musubi-adblock-rules.json';
 
+export const DEFAULT_REMOTE_CATALOG_URL =
+  'https://yusuke0627.github.io/MusubiReader/catalog/default-packs.json';
+
+export const DEFAULT_REMOTE_ADBLOCK_RULES_URL =
+  'https://yusuke0627.github.io/MusubiReader/adblock/default-rules.json';
+
 export interface RemoteConfig {
   catalogUrl: string | null;
   adBlockRulesUrl: string | null;
@@ -38,14 +44,36 @@ function normalizeHttpUrl(rawUrl: string | null | undefined): string | null {
   }
 }
 
+function resolveEnvOrDefaultUrl(
+  rawEnvValue: string | undefined,
+  defaultUrl: string
+): string | null {
+  if (rawEnvValue === undefined) {
+    return defaultUrl;
+  }
+  const trimmed = rawEnvValue.trim();
+  if (!trimmed || /^(off|disabled|none)$/i.test(trimmed)) {
+    return null;
+  }
+  return normalizeHttpUrl(trimmed);
+}
+
 /**
- * Reads optional static JSON URLs from Expo public environment variables.
+ * Reads static JSON URLs from Expo public environment variables, defaulting to
+ * the project's GitHub Pages endpoints when unset. Setting an env var to empty
+ * or "off" explicitly disables remote fetching.
  * Direct `process.env.EXPO_PUBLIC_*` property access preserves Metro static inlining.
  */
 export function getRemoteConfig(): RemoteConfig {
   return {
-    catalogUrl: normalizeHttpUrl(process.env.EXPO_PUBLIC_CATALOG_URL),
-    adBlockRulesUrl: normalizeHttpUrl(process.env.EXPO_PUBLIC_ADBLOCK_RULES_URL),
+    catalogUrl: resolveEnvOrDefaultUrl(
+      process.env.EXPO_PUBLIC_CATALOG_URL,
+      DEFAULT_REMOTE_CATALOG_URL
+    ),
+    adBlockRulesUrl: resolveEnvOrDefaultUrl(
+      process.env.EXPO_PUBLIC_ADBLOCK_RULES_URL,
+      DEFAULT_REMOTE_ADBLOCK_RULES_URL
+    ),
   };
 }
 
