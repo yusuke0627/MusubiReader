@@ -46,6 +46,8 @@ export default function ArticleReaderScreen() {
   const [isLoadingArticle, setIsLoadingArticle] = useState(true);
   const [isLoadingWebView, setIsLoadingWebView] = useState(false);
   const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
+  const [preferCache, setPreferCache] = useState(true);
+  const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isTogglingSave, setIsTogglingSave] = useState(false);
 
@@ -184,6 +186,9 @@ export default function ArticleReaderScreen() {
       const payload = event.nativeEvent;
       setIsLoadingWebView(false);
       setUsedOfflineFallback(Boolean(payload.usedOfflineFallback));
+      setLastDurationMs(
+        typeof payload.durationMs === 'number' ? payload.durationMs : null
+      );
       if (!payload.success && payload.error) {
         setLoadError(payload.error);
       } else {
@@ -350,7 +355,54 @@ export default function ArticleReaderScreen() {
             style={[styles.statusBannerText, { color: colors.badgeSuccessText }]}
           >
             オフラインキャッシュを表示中
+            {lastDurationMs !== null ? `（${lastDurationMs}ms）` : ''}
           </Text>
+          <Pressable
+            testID="reader-switch-online-button"
+            accessibilityRole="button"
+            onPress={() => setPreferCache(false)}
+            style={[
+              styles.bannerActionBtn,
+              { backgroundColor: colors.surface },
+            ]}
+          >
+            <Text style={[styles.bannerActionText, { color: colors.text }]}>
+              オンライン表示
+            </Text>
+          </Pressable>
+        </View>
+      ) : offlineHtmlPath && !preferCache ? (
+        <View
+          style={[
+            styles.statusBanner,
+            {
+              backgroundColor: colors.surfaceSecondary,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
+          <Text style={[styles.statusBannerText, { color: colors.textSecondary }]}>
+            オンライン表示中
+            {lastDurationMs !== null ? `（${lastDurationMs}ms）` : ''}
+          </Text>
+          <Pressable
+            testID="reader-switch-cache-button"
+            accessibilityRole="button"
+            onPress={() => setPreferCache(true)}
+            style={[
+              styles.bannerActionBtn,
+              { backgroundColor: colors.badgeSuccessBg },
+            ]}
+          >
+            <Text
+              style={[
+                styles.bannerActionText,
+                { color: colors.badgeSuccessText },
+              ]}
+            >
+              先読みキャッシュで表示
+            </Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -393,6 +445,7 @@ export default function ArticleReaderScreen() {
         url={article.url}
         offlineHtmlPath={offlineHtmlPath}
         adBlockEnabled={true}
+        preferOfflineCache={preferCache && Boolean(offlineHtmlPath)}
         onLoadStart={handleLoadStart}
         onLoadEnd={handleLoadEnd}
       />
@@ -417,6 +470,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  bannerActionBtn: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  bannerActionText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   statusBannerText: {
     fontSize: 12,

@@ -1,3 +1,4 @@
+import { type Href, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
@@ -22,6 +23,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default function SourcesScreen() {
+  const router = useRouter();
   const colors = useThemeColors();
   const {
     catalog,
@@ -495,6 +497,20 @@ export default function SourcesScreen() {
             </Text>
           </Pressable>
         </View>
+
+        <Pressable
+          testID="open-benchmark-button"
+          accessibilityRole="button"
+          onPress={() => router.push('/benchmark' as Href)}
+          style={[
+            styles.primaryBtn,
+            { backgroundColor: colors.accentSoft, marginTop: 8 },
+          ]}
+        >
+          <Text style={[styles.clearBtnText, { color: colors.accentText }]}>
+            先読み速度ベンチマークを計測する
+          </Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
