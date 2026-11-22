@@ -8,13 +8,14 @@ export const DEFAULT_FETCH_CONCURRENCY = 4;
 export async function fetchWithTimeout(
   url: string,
   fetcher: typeof fetch = fetch,
-  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
+  init?: RequestInit
 ): Promise<Response> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const fetchPromise = Promise.resolve().then(() =>
-    fetcher(url, { signal: controller.signal })
+    fetcher(url, { ...init, signal: controller.signal })
   );
   // Prevent unhandled rejection if timeout settles first and fetcher rejects later.
   fetchPromise.catch(() => {});

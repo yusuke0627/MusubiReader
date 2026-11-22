@@ -337,6 +337,9 @@ export default function ArticleReaderScreen() {
         options={{
           title: article.siteName || '記事',
           headerBackTitle: '戻る',
+          headerTransparent: false,
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.text,
         }}
       />
 

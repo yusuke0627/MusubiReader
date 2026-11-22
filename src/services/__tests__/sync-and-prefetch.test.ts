@@ -23,6 +23,8 @@ import {
   registerBackgroundTasks,
 } from '../background-tasks';
 import {
+  extractStylesheetUrls,
+  MOBILE_SAFARI_USER_AGENT,
   rewriteCachedHtml,
   runWifiPrefetchAndPurge,
   type NetworkStateProvider,
@@ -1187,5 +1189,112 @@ describe('notifications setup and permission helpers', () => {
     expect(rewritten).not.toContain('<iframe');
     expect(rewritten).toContain('<img src="img-0.jpg">');
     expect(rewritten).toContain('<p>本文</p>');
+    expect(rewritten).toContain('name="viewport"');
+    expect(rewritten).toContain('data-musubi-safe="1"');
+  });
+
+  test('prefetch sends mobile Safari User-Agent and inlines stylesheets with resolved relative urls', async () => {
+    const { adapter: db, raw } = createInMemorySQLiteAdapter();
+    try {
+      await runMigrations(db);
+      const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+    const nowMs = 1_700_000_000_000;
+
+    await articleRepo.upsertArticles([
+      {
+        id: 'art-mobile-css',
+        siteId: 'site-1',
+        siteName: 'まとめ',
+        packId: 'matome-5ch',
+        category: 'IT',
+        title: 'スマホ表示テスト',
+        url: 'https://blog.example.jp/archives/100.html',
+        summary: 'summary',
+        tags: ['tech'],
+        publishedAt: nowMs - 1000,
+        fetchedAt: nowMs - 1000,
+        isRead: false,
+        isSaved: false,
+        isPrefetched: false,
+      },
+    ]);
+    await settingsRepo.upsertInterestKeyword({
+      id: 'kw-1',
+      word: 'tech',
+      enabled: true,
+      createdAt: nowMs,
+    });
+
+    const files = new Map<string, Uint8Array>();
+    const fileStore: PrefetchFileStore = {
+      cacheDirectory: 'file:///cache/',
+      async writeFile(filePath: string, data: Uint8Array) {
+        files.set(filePath, data);
+        return data.byteLength;
+      },
+      async deletePath(targetPath: string) {
+        for (const key of Array.from(files.keys())) {
+          if (key.startsWith(targetPath)) {
+            files.delete(key);
+          }
+        }
+      },
+    };
+
+    const seenUserAgents: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const target = typeof input === 'string' ? input : input.toString();
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seenUserAgents.push(headers['User-Agent'] ?? '');
+      if (target === 'https://blog.example.jp/archives/100.html') {
+        return new Response(
+          '<html><head><link rel="stylesheet" href="/css/mobile.css"></head><body><h1>記事</h1></body></html>',
+          { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } }
+        );
+      }
+      if (target === 'https://blog.example.jp/css/mobile.css') {
+        return new Response(
+          'body { background: url("../img/bg.png"); font-size: 16px; }',
+          { status: 200, headers: { 'content-type': 'text/css; charset=utf-8' } }
+        );
+      }
+      return new Response('not found', { status: 404 });
+    };
+
+    expect(
+      extractStylesheetUrls(
+        '<link rel="stylesheet" href="/css/mobile.css">',
+        'https://blog.example.jp/archives/100.html'
+      )
+    ).toEqual(['https://blog.example.jp/css/mobile.css']);
+
+    const res = await runWifiPrefetchAndPurge({
+      articleRepo,
+      settingsRepo,
+      fileStore,
+      fetcher,
+      networkState: {
+        async getNetworkStateAsync() {
+          return { type: 'WIFI', isConnected: true };
+        },
+      },
+      now: () => nowMs,
+    });
+
+    expect(res.prefetchedCount).toBe(1);
+    expect(seenUserAgents.every((ua) => ua === MOBILE_SAFARI_USER_AGENT)).toBe(
+      true
+    );
+
+    const savedBytes = files.get('file:///cache/musubi-prefetch/art-mobile-css/index.html');
+    expect(savedBytes).toBeDefined();
+    const savedHtml = new TextDecoder().decode(savedBytes);
+    expect(savedHtml).toContain('<style data-musubi-inlined="1">');
+    expect(savedHtml).toContain('url("https://blog.example.jp/img/bg.png")');
+    expect(savedHtml).toContain('name="viewport"');
+    } finally {
+      raw.close();
+    }
   });
 });
