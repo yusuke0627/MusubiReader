@@ -16,8 +16,8 @@ npm-debug.*
 *.log
 
 # Native builds (Expo CNG)
-ios/
-android/
+/ios/
+/android/
 
 # OS
 .DS_Store
