@@ -44,16 +44,23 @@ export default function PickupScreen() {
   const [keywordDraft, setKeywordDraft] = useState('');
   const [items, setItems] = useState<PickupDisplayItem[]>([]);
 
+  const loadRequestIdRef = React.useRef(0);
+
   const loadItems = useCallback(async () => {
     if (!isReady || initError) {
       return;
     }
+    const requestId = ++loadRequestIdRef.current;
     if (segment === 'matched') {
       const matched = await listPickupArticles();
-      setItems(matched);
+      if (loadRequestIdRef.current === requestId) {
+        setItems(matched);
+      }
     } else {
       const saved = await listSavedArticles();
-      setItems(saved.map((article) => ({ article })));
+      if (loadRequestIdRef.current === requestId) {
+        setItems(saved.map((article) => ({ article })));
+      }
     }
   }, [isReady, initError, segment, listPickupArticles, listSavedArticles]);
 

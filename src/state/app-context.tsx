@@ -228,6 +228,7 @@ export function AppDataProvider({
   const mountedRef = useRef(true);
   const syncInFlightRef = useRef<Promise<SyncAllFeedsResult | null> | null>(null);
   const prefetchInFlightRef = useRef<Promise<WifiPrefetchAndPurgeResult | null> | null>(null);
+  const pendingResyncRef = useRef(false);
 
   const [isReady, setIsReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -339,6 +340,10 @@ export function AppDataProvider({
         syncInFlightRef.current = null;
         if (mountedRef.current) {
           setIsSyncing(false);
+        }
+        if (pendingResyncRef.current && mountedRef.current) {
+          pendingResyncRef.current = false;
+          void syncNow();
         }
       }
     })();
@@ -566,7 +571,11 @@ export function AppDataProvider({
       });
       await loadSnapshot(rt);
       if (enabled) {
-        void syncNow();
+        if (syncInFlightRef.current) {
+          pendingResyncRef.current = true;
+        } else {
+          void syncNow();
+        }
       }
     },
     [loadSnapshot, syncNow]
@@ -694,7 +703,11 @@ export function AppDataProvider({
         createdAt: rt.now(),
       });
       await loadSnapshot(rt);
-      void syncNow();
+      if (syncInFlightRef.current) {
+        pendingResyncRef.current = true;
+      } else {
+        void syncNow();
+      }
       return { ok: true };
     },
     [loadSnapshot, syncNow]
@@ -707,6 +720,7 @@ export function AppDataProvider({
         return;
       }
       await rt.settingsRepo.deleteCustomFeed(siteId);
+      await rt.articleRepo.deleteUnsavedArticlesBySite(siteId);
       await loadSnapshot(rt);
     },
     [loadSnapshot]

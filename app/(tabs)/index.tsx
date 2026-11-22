@@ -98,10 +98,13 @@ export default function HomeScreen() {
     }
   }, [categories, selectedCategory]);
 
+  const loadRequestIdRef = React.useRef(0);
+
   const loadArticles = useCallback(async () => {
     if (!isReady || initError) {
       return;
     }
+    const requestId = ++loadRequestIdRef.current;
     setIsLoadingArticles(true);
     try {
       const categoryArg =
@@ -110,9 +113,13 @@ export default function HomeScreen() {
         selectedPackId,
         categoryArg
       );
-      setArticles(items);
+      if (loadRequestIdRef.current === requestId) {
+        setArticles(items);
+      }
     } finally {
-      setIsLoadingArticles(false);
+      if (loadRequestIdRef.current === requestId) {
+        setIsLoadingArticles(false);
+      }
     }
   }, [
     isReady,

@@ -260,8 +260,31 @@ export class ArticleRepository {
         articleId,
       ]);
       await this.db.runAsync(
+        'UPDATE prefetch_cache SET last_accessed_at = ? WHERE article_id = ?',
+        [nowMs, articleId]
+      );
+      await this.db.runAsync(
         'INSERT INTO read_history (id, article_id, category, read_at) VALUES (?, ?, ?, ?)',
         [historyId, articleId, category, nowMs]
+      );
+    });
+  }
+
+  async deleteUnsavedArticlesBySite(siteId: string): Promise<void> {
+    if (!siteId) {
+      return;
+    }
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync(
+        `DELETE FROM prefetch_cache
+         WHERE article_id IN (
+           SELECT id FROM articles WHERE site_id = ? AND is_saved = 0
+         )`,
+        [siteId]
+      );
+      await this.db.runAsync(
+        'DELETE FROM articles WHERE site_id = ? AND is_saved = 0',
+        [siteId]
       );
     });
   }

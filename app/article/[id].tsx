@@ -50,6 +50,16 @@ export default function ArticleReaderScreen() {
   const [isTogglingSave, setIsTogglingSave] = useState(false);
 
   const recordedArticleIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const activeArticleIdRef = useRef(articleId);
+  activeArticleIdRef.current = articleId;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isReady) {
@@ -117,15 +127,24 @@ export default function ArticleReaderScreen() {
     if (!article || isTogglingSave) {
       return;
     }
+    const targetId = article.id;
     setIsTogglingSave(true);
     try {
-      await toggleSaved(article.id);
-      const refreshed = await getArticleById(article.id);
-      if (refreshed) {
+      await toggleSaved(targetId);
+      const refreshed = await getArticleById(targetId);
+      if (
+        mountedRef.current &&
+        activeArticleIdRef.current === targetId &&
+        refreshed
+      ) {
         setArticle(refreshed);
       }
+    } catch {
+      // Ignore concurrent purge or storage errors without leaving unhandled rejections.
     } finally {
-      setIsTogglingSave(false);
+      if (mountedRef.current) {
+        setIsTogglingSave(false);
+      }
     }
   }, [article, isTogglingSave, toggleSaved, getArticleById]);
 
