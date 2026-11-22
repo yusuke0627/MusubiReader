@@ -23,6 +23,7 @@ import {
   registerBackgroundTasks,
 } from '../background-tasks';
 import {
+  rewriteCachedHtml,
   runWifiPrefetchAndPurge,
   type NetworkStateProvider,
   type PrefetchFileStore,
@@ -1172,5 +1173,19 @@ describe('notifications setup and permission helpers', () => {
         requestPermissionsAsync: requestWhenDenied,
       })
     ).resolves.toBe(false);
+  });
+
+  test('rewriteCachedHtml strips external scripts and iframes while preserving local image rewrites', () => {
+    const html =
+      '<html><head><script src="https://ads.example.com/slow.js"></script></head>' +
+      '<body><p>本文</p><img src="https://cdn.example.com/a.jpg"><iframe src="https://embed.example.com/widget"></iframe></body></html>';
+    const localMap = new Map([['https://cdn.example.com/a.jpg', 'img-0.jpg']]);
+
+    const rewritten = rewriteCachedHtml(html, 'https://example.com/post/1', localMap);
+
+    expect(rewritten).not.toContain('<script');
+    expect(rewritten).not.toContain('<iframe');
+    expect(rewritten).toContain('<img src="img-0.jpg">');
+    expect(rewritten).toContain('<p>本文</p>');
   });
 });

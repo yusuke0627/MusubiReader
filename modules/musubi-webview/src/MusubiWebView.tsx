@@ -20,6 +20,7 @@ export interface MusubiWebViewLoadEndEvent {
   url: string;
   success: boolean;
   usedOfflineFallback: boolean;
+  durationMs?: number;
   error?: string;
 }
 
@@ -39,6 +40,8 @@ export interface MusubiWebViewProps extends ViewProps {
   url: string;
   offlineHtmlPath?: string | null;
   adBlockEnabled?: boolean;
+  preferOfflineCache?: boolean;
+  ignoreHttpCache?: boolean;
   onLoadStart?: (event: NativeSyntheticEvent<MusubiWebViewLoadStartEvent>) => void;
   onLoadEnd?: (event: NativeSyntheticEvent<MusubiWebViewLoadEndEvent>) => void;
 }
@@ -47,6 +50,8 @@ interface NativeMusubiWebViewProps extends ViewProps {
   url: string;
   offlineHtmlPath: string | null;
   adBlockEnabled: boolean;
+  preferOfflineCache: boolean;
+  ignoreHttpCache: boolean;
   onLoadStart?: (event: NativeSyntheticEvent<MusubiWebViewLoadStartEvent>) => void;
   onLoadEnd?: (event: NativeSyntheticEvent<MusubiWebViewLoadEndEvent>) => void;
 }
@@ -100,6 +105,8 @@ export function MusubiWebView({
   url,
   offlineHtmlPath = null,
   adBlockEnabled = true,
+  preferOfflineCache = false,
+  ignoreHttpCache = false,
   onLoadStart,
   onLoadEnd,
   style,
@@ -129,6 +136,8 @@ export function MusubiWebView({
         url={url}
         offlineHtmlPath={offlineHtmlPath ?? null}
         adBlockEnabled={adBlockEnabled}
+        preferOfflineCache={preferOfflineCache}
+        ignoreHttpCache={ignoreHttpCache}
         onLoadStart={onLoadStart}
         onLoadEnd={onLoadEnd}
       />

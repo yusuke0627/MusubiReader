@@ -61,6 +61,10 @@ function RootLayoutNav() {
           name="article/[id]"
           options={{ title: '記事', headerBackTitle: '戻る' }}
         />
+        <Stack.Screen
+          name="benchmark"
+          options={{ title: '先読み速度ベンチマーク', headerBackTitle: '戻る' }}
+        />
       </Stack>
     </ThemeProvider>
   );

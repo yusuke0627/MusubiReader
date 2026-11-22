@@ -30,6 +30,14 @@ public final class MusubiWebViewModule: Module {
         view.adBlockEnabled = adBlockEnabled
       }
 
+      Prop("preferOfflineCache", false) { (view, preferOfflineCache: Bool) in
+        view.preferOfflineCache = preferOfflineCache
+      }
+
+      Prop("ignoreHttpCache", false) { (view, ignoreHttpCache: Bool) in
+        view.ignoreHttpCache = ignoreHttpCache
+      }
+
       OnViewDidUpdateProps { view in
         view.applyPendingUpdates()
       }

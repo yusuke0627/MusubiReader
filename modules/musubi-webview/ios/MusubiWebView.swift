@@ -83,6 +83,8 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   var url: String = ""
   var offlineHtmlPath: String?
   var adBlockEnabled: Bool = true
+  var preferOfflineCache: Bool = false
+  var ignoreHttpCache: Bool = false
 
   let onLoadStart = EventDispatcher()
   let onLoadEnd = EventDispatcher()
@@ -90,12 +92,14 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   private let webView: WKWebView
   private var loadedUrl: String?
   private var appliedAdBlockEnabled: Bool?
+  private var appliedPreferOfflineCache: Bool?
   private var allowedOfflineDirectory: URL?
   private var hasFinishedInitialLoad = false
   private var initialLoadFailed = false
   private var hasAttemptedOfflineFallback = false
   private var isShowingOfflineFallback = false
   private var isLoadInProgress = false
+  private var loadStartedAt: CFTimeInterval?
   private var pendingTargetLoad = false
   private var pendingLoadGeneration: UInt64 = 0
 
@@ -140,22 +144,25 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
     let normalizedUrl = url.trimmingCharacters(in: .whitespacesAndNewlines)
     let urlChanged = normalizedUrl != loadedUrl
     let adBlockChanged = adBlockEnabled != appliedAdBlockEnabled
+    let preferCacheChanged = preferOfflineCache != appliedPreferOfflineCache
 
-    if !urlChanged && !adBlockChanged {
+    if !urlChanged && !adBlockChanged && !preferCacheChanged {
       if initialLoadFailed && !isShowingOfflineFallback && !hasAttemptedOfflineFallback {
         _ = loadOfflineHtmlIfAvailable(baseUrlString: normalizedUrl)
       }
       return
     }
 
-    if urlChanged {
+    if urlChanged || preferCacheChanged {
       loadedUrl = normalizedUrl
+      appliedPreferOfflineCache = preferOfflineCache
       allowedOfflineDirectory = nil
       hasFinishedInitialLoad = false
       initialLoadFailed = false
       hasAttemptedOfflineFallback = false
       isShowingOfflineFallback = false
       isLoadInProgress = false
+      loadStartedAt = nil
       pendingTargetLoad = true
     }
 
@@ -170,7 +177,7 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
         self.applyContentRuleList(ruleList)
         self.appliedAdBlockEnabled = true
         self.triggerLoadOrReload(
-          urlChanged: urlChanged,
+          urlChanged: urlChanged || preferCacheChanged,
           adBlockChanged: adBlockChanged,
           targetUrl: normalizedUrl
         )
@@ -179,7 +186,7 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
       applyContentRuleList(nil)
       appliedAdBlockEnabled = false
       triggerLoadOrReload(
-        urlChanged: urlChanged,
+        urlChanged: urlChanged || preferCacheChanged,
         adBlockChanged: adBlockChanged,
         targetUrl: normalizedUrl
       )
@@ -208,6 +215,10 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
       return
     }
 
+    if preferOfflineCache && loadOfflineHtmlIfAvailable(baseUrlString: targetUrlString) {
+      return
+    }
+
     guard let targetUrl = URL(string: targetUrlString),
           let scheme = targetUrl.scheme?.lowercased(),
           scheme == "http" || scheme == "https" else {
@@ -216,14 +227,19 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
           "url": targetUrlString,
           "success": false,
           "usedOfflineFallback": false,
+          "durationMs": 0,
           "error": "Invalid article URL"
         ])
       }
       return
     }
 
+    loadStartedAt = CACurrentMediaTime()
     var request = URLRequest(url: targetUrl)
     request.timeoutInterval = 15
+    if ignoreHttpCache {
+      request.cachePolicy = .reloadIgnoringLocalCacheData
+    }
     webView.load(request)
   }
 
@@ -377,12 +393,20 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
     allowedOfflineDirectory = cacheDir
     hasAttemptedOfflineFallback = true
     isShowingOfflineFallback = true
+    loadStartedAt = CACurrentMediaTime()
     if !isLoadInProgress {
       isLoadInProgress = true
       onLoadStart(["url": baseUrlString])
     }
     webView.loadFileURL(targetFileUrl, allowingReadAccessTo: cacheDir)
     return true
+  }
+
+  private func elapsedDurationMs() -> Int {
+    guard let startedAt = loadStartedAt else {
+      return 0
+    }
+    return max(0, Int(((CACurrentMediaTime() - startedAt) * 1000.0).rounded()))
   }
 
   private func currentEventUrl() -> String {
@@ -409,11 +433,14 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
       initialLoadFailed = true
     }
 
+    let durationMs = elapsedDurationMs()
+    loadStartedAt = nil
     isLoadInProgress = false
     onLoadEnd([
       "url": currentUrl,
       "success": false,
       "usedOfflineFallback": isShowingOfflineFallback,
+      "durationMs": durationMs,
       "error": error.localizedDescription
     ])
   }
@@ -421,6 +448,9 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   // MARK: - WKNavigationDelegate
 
   public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    if loadStartedAt == nil {
+      loadStartedAt = CACurrentMediaTime()
+    }
     if !isLoadInProgress {
       isLoadInProgress = true
       onLoadStart(["url": currentEventUrl()])
@@ -428,13 +458,16 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   }
 
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    let durationMs = elapsedDurationMs()
+    loadStartedAt = nil
     isLoadInProgress = false
     hasFinishedInitialLoad = true
     initialLoadFailed = false
     onLoadEnd([
       "url": currentEventUrl(),
       "success": true,
-      "usedOfflineFallback": isShowingOfflineFallback
+      "usedOfflineFallback": isShowingOfflineFallback,
+      "durationMs": durationMs
     ])
   }
 
