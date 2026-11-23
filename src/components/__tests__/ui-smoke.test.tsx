@@ -8,7 +8,11 @@ import type { Article } from '../../domain/types';
 import HomeScreen from '../../../app/(tabs)/index';
 import PickupScreen from '../../../app/(tabs)/pickup';
 import SourcesScreen from '../../../app/(tabs)/sources';
-import { AppDataProvider, type AppRuntimeOverrides } from '../../state/app-context';
+import {
+  AppDataProvider,
+  FOREGROUND_SYNC_COOLDOWN_MS,
+  type AppRuntimeOverrides,
+} from '../../state/app-context';
 import { ArticleRow } from '../ArticleRow';
 import { CategoryBar } from '../CategoryBar';
 import { PackSwitcher } from '../PackSwitcher';
@@ -931,5 +935,88 @@ describe('MusubiReader UI smoke tests', () => {
       root2.unmount();
     });
     close2();
+  });
+
+  test('AppDataProvider auto-syncs and prefetches on foreground resume only after 15m cooldown', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+
+    let currentNow = 1_700_000_000_000;
+    let appStateListener: ((state: 'active' | 'background' | 'inactive') => void) | null =
+      null;
+    const syncSpy = jest.fn(async () => ({
+      fetchedFeeds: 1,
+      failedFeeds: 0,
+      newArticles: 0,
+      newKeywordMatches: [],
+    }));
+    const prefetchSpy = jest.fn(async () => ({
+      skippedNotWifi: false,
+      prefetchedCount: 0,
+      purgedCacheCount: 0,
+      purgedMetadataCount: 0,
+    }));
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo: new CatalogRepository(db),
+      articleRepo: new ArticleRepository(db),
+      settingsRepo: new SettingsRepository(db),
+      syncFn: syncSpy,
+      prefetchFn: prefetchSpy,
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+      now: () => currentNow,
+      subscribeAppState: (listener) => {
+        appStateListener = listener as (
+          state: 'active' | 'background' | 'inactive'
+        ) => void;
+        return () => {
+          appStateListener = null;
+        };
+      },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    // Initial cold-start sync + prefetch ran once
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(prefetchSpy).toHaveBeenCalledTimes(1);
+
+    // Resume after 5 minutes (< 15m cooldown): should NOT re-sync
+    currentNow += 5 * 60 * 1000;
+    await act(async () => {
+      appStateListener?.('background');
+      appStateListener?.('active');
+    });
+    await flushEffects();
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(prefetchSpy).toHaveBeenCalledTimes(1);
+
+    // Resume after >= 15 minutes cooldown: should trigger sync -> prefetch
+    currentNow += FOREGROUND_SYNC_COOLDOWN_MS;
+    await act(async () => {
+      appStateListener?.('background');
+      appStateListener?.('active');
+    });
+    await flushEffects();
+    await flushEffects();
+    expect(syncSpy).toHaveBeenCalledTimes(2);
+    expect(prefetchSpy).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
   });
 });

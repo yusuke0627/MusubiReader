@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { openDatabase, type SQLiteDatabaseLike } from '../data/database';
 import { ArticleRepository } from '../data/repositories/article-repository';
 import { CatalogRepository } from '../data/repositories/catalog-repository';
@@ -45,6 +46,8 @@ import {
   type SyncAllFeedsResult,
 } from '../services/sync-service';
 
+export const FOREGROUND_SYNC_COOLDOWN_MS = 15 * 60 * 1000;
+
 export interface AppRuntimeOverrides {
   db?: SQLiteDatabaseLike;
   catalogRepo?: CatalogRepository;
@@ -55,6 +58,9 @@ export interface AppRuntimeOverrides {
   registerBackgroundFn?: () => Promise<void>;
   configureNotificationsFn?: () => Promise<void>;
   requestNotificationPermissionsFn?: () => Promise<boolean>;
+  subscribeAppState?: (
+    listener: (nextState: AppStateStatus) => void
+  ) => () => void;
   remoteConfig?: RemoteConfig;
   fetcher?: typeof fetch;
   adBlockCacheStore?: AdBlockRulesCacheStore;
@@ -229,6 +235,10 @@ export function AppDataProvider({
   const syncInFlightRef = useRef<Promise<SyncAllFeedsResult | null> | null>(null);
   const prefetchInFlightRef = useRef<Promise<WifiPrefetchAndPurgeResult | null> | null>(null);
   const pendingResyncRef = useRef(false);
+  const lastSyncAttemptAtRef = useRef<number>(0);
+  const appStateRef = useRef<AppStateStatus>(
+    (AppState?.currentState as AppStateStatus | undefined) ?? 'active'
+  );
 
   const [isReady, setIsReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -321,6 +331,8 @@ export function AppDataProvider({
     if (syncInFlightRef.current) {
       return syncInFlightRef.current;
     }
+
+    lastSyncAttemptAtRef.current = rt.now();
 
     const task = (async () => {
       if (mountedRef.current) {
@@ -444,6 +456,46 @@ export function AppDataProvider({
     syncNow,
     prefetchNow,
   ]);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      const resumedToForeground =
+        (prevState === 'background' || prevState === 'inactive') &&
+        nextState === 'active';
+      if (!resumedToForeground) {
+        return;
+      }
+
+      void refreshNetworkState();
+
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return;
+      }
+      const elapsed = rt.now() - lastSyncAttemptAtRef.current;
+      if (elapsed >= FOREGROUND_SYNC_COOLDOWN_MS) {
+        void (async () => {
+          await syncNow();
+          await prefetchNow();
+        })();
+      }
+    };
+
+    if (runtimeOverrides?.subscribeAppState) {
+      return runtimeOverrides.subscribeAppState(handleAppStateChange);
+    }
+
+    const subscription = AppState?.addEventListener?.(
+      'change',
+      handleAppStateChange
+    );
+    return () => {
+      subscription?.remove?.();
+    };
+  }, [runtimeOverrides, refreshNetworkState, syncNow, prefetchNow]);
 
   const listArticlesByPackAndCategory = useCallback(
     async (packId: string, category?: string): Promise<Article[]> => {
