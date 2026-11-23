@@ -800,4 +800,20 @@ describe('SettingsRepository', () => {
       raw.close();
     }
   });
+
+  test('SettingsRepository persists and accumulates total blocked ads count', async () => {
+    const { adapter, raw } = createInMemorySQLiteAdapter();
+    try {
+      const db = await openDatabase(adapter);
+      const settingsRepo = new SettingsRepository(db);
+
+      expect(await settingsRepo.getTotalBlockedAds()).toBe(0);
+      expect(await settingsRepo.incrementTotalBlockedAds(5, 1000)).toBe(5);
+      expect(await settingsRepo.incrementTotalBlockedAds(12, 2000)).toBe(17);
+      expect(await settingsRepo.incrementTotalBlockedAds(-3, 3000)).toBe(17);
+      expect(await settingsRepo.getTotalBlockedAds()).toBe(17);
+    } finally {
+      raw.close();
+    }
+  });
 });

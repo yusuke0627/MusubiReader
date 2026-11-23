@@ -21,6 +21,7 @@ export interface MusubiWebViewLoadEndEvent {
   success: boolean;
   usedOfflineFallback: boolean;
   durationMs?: number;
+  blockedCount?: number;
   error?: string;
 }
 

@@ -26,6 +26,7 @@ import {
   extractStylesheetUrls,
   MOBILE_SAFARI_USER_AGENT,
   rewriteCachedHtml,
+  rewriteCachedHtmlWithStats,
   runWifiPrefetchAndPurge,
   type NetworkStateProvider,
   type PrefetchFileStore,
@@ -1183,14 +1184,23 @@ describe('notifications setup and permission helpers', () => {
       '<body><p>本文</p><img src="https://cdn.example.com/a.jpg"><iframe src="https://embed.example.com/widget"></iframe></body></html>';
     const localMap = new Map([['https://cdn.example.com/a.jpg', 'img-0.jpg']]);
 
-    const rewritten = rewriteCachedHtml(html, 'https://example.com/post/1', localMap);
+    const { html: rewritten, blockedCount } = rewriteCachedHtmlWithStats(
+      html,
+      'https://example.com/post/1',
+      localMap
+    );
 
+    expect(blockedCount).toBe(2);
     expect(rewritten).not.toContain('<script');
     expect(rewritten).not.toContain('<iframe');
     expect(rewritten).toContain('<img src="img-0.jpg">');
     expect(rewritten).toContain('<p>本文</p>');
     expect(rewritten).toContain('name="viewport"');
+    expect(rewritten).toContain('<meta name="musubi-blocked-count" content="2">');
     expect(rewritten).toContain('data-musubi-safe="1"');
+    expect(
+      rewriteCachedHtml(html, 'https://example.com/post/1', localMap)
+    ).toBe(rewritten);
   });
 
   test('prefetch sends mobile Safari User-Agent and inlines stylesheets with resolved relative urls', async () => {

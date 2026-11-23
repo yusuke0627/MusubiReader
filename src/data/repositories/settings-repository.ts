@@ -23,6 +23,7 @@ import {
  * pack toggles, per-site mute overrides, and custom RSS feeds.
  */
 const PREFETCH_BATCH_SIZE_KEY = 'prefetch_batch_size';
+const TOTAL_BLOCKED_ADS_KEY = 'total_blocked_ads';
 export const DEFAULT_USER_PREFETCH_BATCH_SIZE = 20;
 export const PREFETCH_BATCH_SIZE_OPTIONS = [10, 20, 30, 50, 100] as const;
 const MIN_PREFETCH_BATCH_SIZE = 1;
@@ -229,6 +230,42 @@ export class SettingsRepository {
       [PREFETCH_BATCH_SIZE_KEY, String(clamped), updatedAt]
     );
     return clamped;
+  }
+
+  async getTotalBlockedAds(): Promise<number> {
+    const row = await this.db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM app_preferences WHERE key = ?',
+      [TOTAL_BLOCKED_ADS_KEY]
+    );
+    if (!row) {
+      return 0;
+    }
+    const parsed = Number(row.value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+  }
+
+  async incrementTotalBlockedAds(
+    delta: number,
+    updatedAt: number = Date.now()
+  ): Promise<number> {
+    const safeDelta = Number.isFinite(delta) ? Math.max(0, Math.floor(delta)) : 0;
+    if (safeDelta === 0) {
+      return this.getTotalBlockedAds();
+    }
+    let nextTotal = safeDelta;
+    await this.db.withTransactionAsync(async () => {
+      const current = await this.getTotalBlockedAds();
+      nextTotal = current + safeDelta;
+      await this.db.runAsync(
+        `INSERT INTO app_preferences (key, value, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value = excluded.value,
+           updated_at = excluded.updated_at`,
+        [TOTAL_BLOCKED_ADS_KEY, String(nextTotal), updatedAt]
+      );
+    });
+    return nextTotal;
   }
 
   // --- shared helpers ---

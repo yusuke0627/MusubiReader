@@ -37,6 +37,7 @@ export default function SourcesScreen() {
     isPrefetching,
     lastPrefetchResult,
     prefetchBatchSize,
+    totalBlockedAds,
     refreshNetworkState,
     setPackEnabled,
     addCustomFeed,
@@ -460,6 +461,12 @@ export default function SourcesScreen() {
         <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
           先読みキャッシュ: {cacheEntries.length}件（合計{' '}
           {formatBytes(totalCacheBytes)}）
+        </Text>
+        <Text
+          testID="sources-total-blocked-ads"
+          style={[styles.rowSubtitle, { color: colors.badgeSuccessText, fontWeight: '600' }]}
+        >
+          {`🛡️ 累計広告ブロック数: ${totalBlockedAds.toLocaleString()}件`}
         </Text>
 
         <Text
