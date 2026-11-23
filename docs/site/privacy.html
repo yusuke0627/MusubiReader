@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>プライバシーポリシー — MusubiReader</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --accent: #ff4d5a;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1120;
+        --surface: #131c31;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #243047;
+        --accent: #ff6b76;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 36px 20px 64px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px 24px;
+    }
+    .back {
+      display: inline-block;
+      margin-bottom: 16px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+    .updated {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    h2 {
+      margin: 26px 0 8px;
+      font-size: 17px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    p, li {
+      font-size: 14px;
+      color: var(--text);
+    }
+    ul {
+      padding-left: 20px;
+    }
+    a {
+      color: var(--accent);
+    }
+    .en-summary {
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px dashed var(--border);
+      color: var(--muted);
+    }
+    .en-summary p, .en-summary li {
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="./index.html">&larr; MusubiReader トップへ戻る</a>
+    <article class="card">
+      <h1>プライバシーポリシー</h1>
+      <p class="updated">最終更新日: 2026年11月23日</p>
+
+      <p>
+        MusubiReader（以下「本アプリ」）は、利用者のプライバシーを最大限に尊重し、個人情報を一切収集しないオンデバイス設計を採用しています。本ポリシーでは、本アプリにおけるデータの取り扱いについて説明します。
+      </p>
+
+      <h2>1. 収集する情報について</h2>
+      <p>
+        本アプリは、氏名、メールアドレス、位置情報、端末識別子（IDFA等）、閲覧履歴、検索履歴などの個人情報を一切収集・送信しません。また、アカウント登録やログインも不要です。
+      </p>
+
+      <h2>2. 端末内に保存されるデータ</h2>
+      <p>以下のデータはすべてお使いの端末内（ローカルストレージおよび SQLite データベース）にのみ保存され、開発者や第三者のサーバーへ送信されることはありません。</p>
+      <ul>
+        <li>有効化しているプリセットパック・カスタム RSS フィードの設定</li>
+        <li>取得した記事のメタデータ、既読・未読状態、ブックマーク</li>
+        <li>注目キーワード・NG ワード・サイトミュート設定</li>
+        <li>Wi-Fi 事前ダウンロードで保存された記事キャッシュ（HTML・画像）</li>
+        <li>広告ブロック件数の累計およびダウンロード件数設定</li>
+      </ul>
+      <p>
+        キャッシュはアプリ内の「ソース・設定」画面からいつでも削除でき、アプリをアンインストールすることで端末内の全データが削除されます。
+      </p>
+
+      <h2>3. 外部との通信について</h2>
+      <p>本アプリは以下の目的に限りネットワーク通信を行います。</p>
+      <ul>
+        <li><strong>RSS / Atom フィードおよび記事ページの取得:</strong> 利用者が購読・閲覧する各Webサイトへ直接アクセスします。各外部サイトにおけるデータの取り扱いは、それぞれのサイトのプライバシーポリシーに従います。</li>
+        <li><strong>プリセットカタログおよび広告ブロックルールの取得:</strong> GitHub Pages 上の静的 JSON ファイルを取得するために接続します。この通信に個人を特定する情報は含まれません。</li>
+      </ul>
+
+      <h2>4. 第三者による分析・広告 SDK</h2>
+      <p>
+        本アプリには、アクセス解析ツール（Google Analytics 等）、広告配信 SDK、クラッシュ追跡ツール等の第三者トラッキング SDK を一切組み込んでいません。
+      </p>
+
+      <h2>5. ローカル通知</h2>
+      <p>
+        利用者が通知を許可した場合、端末内で判定した注目キーワード一致記事についてローカル通知を表示します。プッシュ通知サーバーへのデバイストークン送信は行いません。
+      </p>
+
+      <h2>6. プライバシーポリシーの変更</h2>
+      <p>
+        本ポリシーの内容は、法令改正や機能追加に応じて予告なく改定することがあります。重要な変更がある場合は本ページ上で告知します。
+      </p>
+
+      <h2>7. お問い合わせ</h2>
+      <p>
+        本ポリシーに関するご質問は、<a href="./support.html">サポートページ</a>または <a href="https://github.com/yusuke0627/MusubiReader/issues" rel="noopener noreferrer">GitHub Issues</a> よりお問い合わせください。
+      </p>
+
+      <section class="en-summary" lang="en">
+        <h2>Privacy Policy Summary (English)</h2>
+        <p>
+          MusubiReader does not collect, store, or share any personal data. No account is required, and no third-party analytics, tracking, or advertising SDKs are included. All subscriptions, bookmarks, keywords, reading history, and offline article caches remain strictly on your device. Network requests are made directly to the RSS feeds and web pages you choose to read, plus static catalog and content-blocking rule files hosted on GitHub Pages.
+        </p>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

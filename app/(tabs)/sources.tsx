@@ -1,6 +1,7 @@
 import { type Href, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,9 +10,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import appConfig from '../../app.json';
 import { PREFETCH_BATCH_SIZE_OPTIONS } from '../../src/data/repositories/settings-repository';
 import { useAppData } from '../../src/state/app-context';
 import { useThemeColors } from '../../src/theme/tokens';
+
+export const PRIVACY_POLICY_URL =
+  'https://yusuke0627.github.io/MusubiReader/privacy.html';
+export const SUPPORT_URL =
+  'https://yusuke0627.github.io/MusubiReader/support.html';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) {
@@ -562,6 +569,56 @@ export default function SourcesScreen() {
             ダウンロード速度ベンチマークを計測する
           </Text>
         </Pressable>
+      </View>
+
+      <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
+        アプリ情報
+      </Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <Pressable
+          testID="open-privacy-policy-button"
+          accessibilityRole="link"
+          onPress={() => void Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})}
+          style={[styles.row, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
+        >
+          <Text style={[styles.rowTitle, { color: colors.text }]}>
+            プライバシーポリシー
+          </Text>
+          <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+            開く ↗
+          </Text>
+        </Pressable>
+
+        <Pressable
+          testID="open-support-button"
+          accessibilityRole="link"
+          onPress={() => void Linking.openURL(SUPPORT_URL).catch(() => {})}
+          style={[styles.row, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
+        >
+          <Text style={[styles.rowTitle, { color: colors.text }]}>
+            サポート・お問い合わせ
+          </Text>
+          <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+            開く ↗
+          </Text>
+        </Pressable>
+
+        <View style={styles.row}>
+          <Text style={[styles.rowTitle, { color: colors.text }]}>
+            バージョン
+          </Text>
+          <Text
+            testID="app-version-text"
+            style={[styles.rowSubtitle, { color: colors.textSecondary }]}
+          >
+            {appConfig.expo.version}
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
