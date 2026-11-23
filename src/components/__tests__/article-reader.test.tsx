@@ -558,4 +558,63 @@ describe('ArticleReaderScreen', () => {
     });
     close();
   });
+
+  test('renders single-line status banner and non-wrapping toolbar button labels', async () => {
+    const { articleRepo, runtime, close } = await setupHarness();
+    await articleRepo.upsertArticles([makeSampleArticle({ id: 'art-1' })]);
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <ArticleReaderScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const triggerLoadEnd = capturedWebViewProps?.onLoadEnd as
+      | ((event: { nativeEvent: Record<string, unknown> }) => void)
+      | undefined;
+    await act(async () => {
+      triggerLoadEnd?.({
+        nativeEvent: {
+          url: 'https://example.com/articles/ts6',
+          success: true,
+          usedOfflineFallback: true,
+          durationMs: 1112,
+          blockedCount: 95,
+        },
+      });
+    });
+
+    const indicator = findByTestId(root.container, 'reader-offline-indicator');
+    const bannerTexts = indicator.queryAll(
+      (node) => node.props?.numberOfLines === 1
+    );
+    expect(bannerTexts.length).toBeGreaterThanOrEqual(2);
+    expect(extractAllText(indicator)).toContain('オフライン');
+    expect(extractAllText(indicator)).toContain('95件カット');
+
+    for (const testID of [
+      'reader-back-button',
+      'reader-save-button',
+      'reader-share-button',
+      'reader-safari-button',
+    ]) {
+      const btn = findByTestId(root.container, testID);
+      const singleLineText = btn.queryAll(
+        (node) =>
+          node.props?.numberOfLines === 1 &&
+          node.props?.adjustsFontSizeToFit === true
+      );
+      expect(singleLineText.length).toBeGreaterThanOrEqual(1);
+    }
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
+  });
 });
