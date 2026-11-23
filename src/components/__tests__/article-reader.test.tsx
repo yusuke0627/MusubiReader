@@ -334,14 +334,14 @@ describe('ArticleReaderScreen', () => {
     await flushEffects();
 
     const saveBtn = findByTestId(root.container, 'reader-save-button');
-    expect(extractAllText(saveBtn)).toContain('後で読む');
+    expect(extractAllText(saveBtn)).toContain('ブックマーク');
 
     await act(async () => {
       pressNode(saveBtn);
     });
     await flushEffects();
 
-    expect(extractAllText(findByTestId(root.container, 'reader-save-button'))).toContain('保存済み');
+    expect(extractAllText(findByTestId(root.container, 'reader-save-button'))).toContain('ブックマーク済み');
     const saved = await articleRepo.getById('art-1');
     expect(saved?.isSaved).toBe(true);
 
@@ -350,7 +350,7 @@ describe('ArticleReaderScreen', () => {
     });
     await flushEffects();
 
-    expect(extractAllText(findByTestId(root.container, 'reader-save-button'))).toContain('後で読む');
+    expect(extractAllText(findByTestId(root.container, 'reader-save-button'))).toContain('☆ ブックマーク');
     const unsaved = await articleRepo.getById('art-1');
     expect(unsaved?.isSaved).toBe(false);
 

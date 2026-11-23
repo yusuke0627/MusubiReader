@@ -108,7 +108,7 @@ export function ArticleRow({
                 <Text
                   style={[styles.badgeText, { color: colors.badgeSavedText }]}
                 >
-                  保存済み
+                  ブックマーク
                 </Text>
               </View>
             ) : null}
@@ -150,29 +150,63 @@ export function ArticleRow({
         <Text style={[styles.categoryLabel, { color: colors.textMuted }]}>
           {article.category}
         </Text>
-        <Pressable
-          testID={`article-menu-button-${article.id}`}
-          accessibilityRole="button"
-          accessibilityLabel={`${article.title}のメニュー`}
-          onPress={() => setMenuOpen((prev) => !prev)}
-          style={[
-            styles.menuButton,
-            {
-              backgroundColor: menuOpen
-                ? colors.accentSoft
-                : colors.surfaceSecondary,
-            },
-          ]}
-        >
-          <Text
+        <View style={styles.footerActions}>
+          <Pressable
+            testID={`article-bookmark-button-${article.id}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: article.isSaved }}
+            accessibilityLabel={
+              article.isSaved
+                ? `${article.title}のブックマークを解除`
+                : `${article.title}をブックマーク`
+            }
+            onPress={() => onToggleSave(article)}
             style={[
-              styles.menuButtonText,
-              { color: menuOpen ? colors.accentText : colors.textSecondary },
+              styles.menuButton,
+              {
+                backgroundColor: article.isSaved
+                  ? colors.badgeSavedBg
+                  : colors.surfaceSecondary,
+              },
             ]}
           >
-            メニュー
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.menuButtonText,
+                {
+                  color: article.isSaved
+                    ? colors.badgeSavedText
+                    : colors.textSecondary,
+                },
+              ]}
+            >
+              {article.isSaved ? '★ ブックマーク済み' : '☆ ブックマーク'}
+            </Text>
+          </Pressable>
+          <Pressable
+            testID={`article-menu-button-${article.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={`${article.title}のメニュー`}
+            onPress={() => setMenuOpen((prev) => !prev)}
+            style={[
+              styles.menuButton,
+              {
+                backgroundColor: menuOpen
+                  ? colors.accentSoft
+                  : colors.surfaceSecondary,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.menuButtonText,
+                { color: menuOpen ? colors.accentText : colors.textSecondary },
+              ]}
+            >
+              メニュー
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       {menuOpen ? (
@@ -192,7 +226,7 @@ export function ArticleRow({
             style={[styles.actionBtn, { backgroundColor: colors.surface }]}
           >
             <Text style={[styles.actionBtnText, { color: colors.accentText }]}>
-              {article.isSaved ? '保存を解除' : '後で読む'}
+              {article.isSaved ? 'ブックマーク解除' : 'ブックマーク'}
             </Text>
           </Pressable>
 
@@ -301,6 +335,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 10,
     paddingTop: 2,
+  },
+  footerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   categoryLabel: {
     fontSize: 11,

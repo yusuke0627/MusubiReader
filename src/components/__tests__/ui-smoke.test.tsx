@@ -7,6 +7,7 @@ import { SettingsRepository } from '../../data/repositories/settings-repository'
 import type { Article } from '../../domain/types';
 import HomeScreen from '../../../app/(tabs)/index';
 import PickupScreen from '../../../app/(tabs)/pickup';
+import BookmarksScreen from '../../../app/(tabs)/bookmarks';
 import SourcesScreen from '../../../app/(tabs)/sources';
 import {
   AppDataProvider,
@@ -277,6 +278,17 @@ describe('MusubiReader UI smoke tests', () => {
     const textWithPrefetch = extractAllText(root.container);
     expect(textWithPrefetch).toContain('先読み済み');
 
+    // One-tap bookmark toggle button works directly without opening menu
+    const quickBookmarkBtn = findByTestId(
+      root.container,
+      'article-bookmark-button-art-1'
+    );
+    expect(extractAllText(quickBookmarkBtn)).toContain('ブックマーク');
+    await act(async () => {
+      pressNode(quickBookmarkBtn);
+    });
+    expect(onToggleSave).toHaveBeenCalledTimes(1);
+
     // Open explicit labeled action menu (no mystery icons)
     const menuBtn = findByTestId(root.container, 'article-menu-button-art-1');
     expect(extractAllText(menuBtn)).toContain('メニュー');
@@ -286,13 +298,13 @@ describe('MusubiReader UI smoke tests', () => {
 
     const saveBtn = findByTestId(root.container, 'article-action-save-art-1');
     const muteBtn = findByTestId(root.container, 'article-action-mute-art-1');
-    expect(extractAllText(saveBtn)).toContain('後で読む');
+    expect(extractAllText(saveBtn)).toContain('ブックマーク');
     expect(extractAllText(muteBtn)).toContain('このサイトを非表示');
 
     await act(async () => {
       pressNode(saveBtn);
     });
-    expect(onToggleSave).toHaveBeenCalledTimes(1);
+    expect(onToggleSave).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       pressNode(menuBtn);
@@ -535,28 +547,12 @@ describe('MusubiReader UI smoke tests', () => {
     expect(configureNotificationsFn).toHaveBeenCalledTimes(1);
     expect(requestNotificationPermissionsFn).not.toHaveBeenCalled();
 
-    // Default segment: キーワード一致
+    // Pickup focuses on keyword-matched curation across packs
     let text = extractAllText(root.container);
-    expect(text).toContain('キーワード一致');
-    expect(text).toContain('保存済み');
     expect(text).toContain('TypeScript入門ガイド');
     expect(text).not.toContain('後で読む保存記事タイトル');
 
-    // Switch segment to 保存済み
-    await act(async () => {
-      pressNode(findByTestId(root.container, 'pickup-segment-saved'));
-    });
-    await flushEffects();
-
-    text = extractAllText(root.container);
-    expect(text).toContain('後で読む保存記事タイトル');
-    expect(text).not.toContain('TypeScript入門ガイド');
-
-    // Switch back to キーワード一致 and verify adding a keyword updates chips
-    await act(async () => {
-      pressNode(findByTestId(root.container, 'pickup-segment-matched'));
-    });
-    await flushEffects();
+    // Adding a keyword updates chips and requests notification permission once
     const input = findByTestId(root.container, 'pickup-keyword-input');
     await act(async () => {
       input.props.onChangeText('Expo');
@@ -1090,6 +1086,105 @@ describe('MusubiReader UI smoke tests', () => {
     await act(async () => {
       root.unmount();
     });
+    close();
+  });
+
+  test('BookmarksScreen lists bookmarked articles, filters by query, and removes via one-tap button', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const articleRepo = new ArticleRepository(db);
+    const now = 1_700_000_000_000;
+
+    await articleRepo.upsertArticles([
+      makeSampleArticle({
+        id: 'bm-1',
+        title: '保存したいSwift記事',
+        siteName: 'Techまとめ',
+        isSaved: true,
+        publishedAt: now - 1000,
+      }),
+      makeSampleArticle({
+        id: 'bm-2',
+        title: '保存したい料理レシピ',
+        siteName: 'ライフまとめ',
+        isSaved: true,
+        publishedAt: now - 2000,
+      }),
+      makeSampleArticle({
+        id: 'bm-unsaved',
+        title: '未保存の記事',
+        isSaved: false,
+        publishedAt: now - 500,
+      }),
+    ]);
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo: new CatalogRepository(db),
+      articleRepo,
+      settingsRepo: new SettingsRepository(db),
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn: async () => ({
+        skippedNotWifi: false,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <BookmarksScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    let text = extractAllText(root.container);
+    expect(text).toContain('ブックマーク（2件）');
+    expect(text).toContain('保存したいSwift記事');
+    expect(text).toContain('保存したい料理レシピ');
+    expect(text).not.toContain('未保存の記事');
+
+    // Filter by query (case-insensitive NFKC)
+    const searchInput = findByTestId(root.container, 'bookmarks-search-input');
+    await act(async () => {
+      searchInput.props.onChangeText('ｓｗｉｆｔ');
+    });
+    text = extractAllText(root.container);
+    expect(text).toContain('保存したいSwift記事');
+    expect(text).not.toContain('保存したい料理レシピ');
+
+    // Clear query and remove bm-1 via one-tap bookmark button
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'bookmarks-search-clear'));
+    });
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'article-bookmark-button-bm-1'));
+    });
+    await flushEffects();
+    await flushEffects();
+
+    text = extractAllText(root.container);
+    expect(text).toContain('ブックマーク（1件）');
+    expect(text).not.toContain('保存したいSwift記事');
+    expect(text).toContain('保存したい料理レシピ');
+
+    await act(async () => {
+      root.unmount();
+    });
+    await flushEffects();
     close();
   });
 });
