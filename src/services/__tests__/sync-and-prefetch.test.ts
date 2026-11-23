@@ -776,6 +776,7 @@ describe('runWifiPrefetchAndPurge', () => {
       fileStore: store,
       fetcher,
       now: () => nowMs,
+      maxBatch: 2,
     });
 
     expect(result).toEqual({
@@ -791,7 +792,7 @@ describe('runWifiPrefetchAndPurge', () => {
     expect(remainingArticles.map((a) => a.id)).not.toContain('art-old');
     expect(remainingArticles.map((a) => a.id)).toContain('art-saved');
 
-    // Did not download art-other (neither keyword-matched nor top-category)
+    // art-other is lower priority than matched/top-category so excluded by maxBatch: 2
     expect(downloadedUrls).not.toContain('https://example.com/posts/other.html');
     // Downloaded only first 5 unique images for art-matched
     expect(downloadedUrls).not.toContain('https://cdn.example.com/6.jpg');
@@ -814,6 +815,160 @@ describe('runWifiPrefetchAndPurge', () => {
       'file:///tmp/cache/musubi-prefetch/art-matched/index.html'
     );
     expect(matchedCache?.sizeBytes).toBeGreaterThan(20);
+  });
+
+  test('prioritizes preferredPackId articles (e.g. tech-jp) and skips disabled packs via catalogRepo', async () => {
+    const nowMs = 1_700_000_000_000;
+    await articleRepo.recordRead('hist-5ch', '雑談・ニュース', nowMs - 10_000);
+
+    await articleRepo.upsertArticles([
+      makeArticle({
+        id: 'art-5ch',
+        packId: 'matome-5ch',
+        siteId: 'site-5ch',
+        category: '雑談・ニュース',
+        url: 'https://example.com/5ch.html',
+        publishedAt: nowMs - 1_000,
+        fetchedAt: nowMs - 1_000,
+      }),
+      makeArticle({
+        id: 'art-tech',
+        packId: 'tech-jp',
+        siteId: 'site-tech',
+        category: 'エンジニア',
+        url: 'https://example.com/tech.html',
+        publishedAt: nowMs - 5_000,
+        fetchedAt: nowMs - 5_000,
+      }),
+      makeArticle({
+        id: 'art-disabled',
+        packId: 'news-jp',
+        siteId: 'site-disabled',
+        category: '総合ニュース',
+        url: 'https://example.com/disabled.html',
+        publishedAt: nowMs - 500,
+        fetchedAt: nowMs - 500,
+      }),
+    ]);
+
+    const { store } = createMemoryFileStore();
+    const fetchedUrls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      fetchedUrls.push(url);
+      return new Response('<html><body><p>ok</p></body></html>', {
+        status: 200,
+      });
+    };
+
+    const result = await runWifiPrefetchAndPurge({
+      articleRepo,
+      settingsRepo,
+      catalogRepo: {
+        async getResolvedFeeds() {
+          return [
+            {
+              packId: 'matome-5ch',
+              siteId: 'site-5ch',
+              name: '5ch',
+              rssUrl: 'https://example.com/5ch.xml',
+              category: '雑談・ニュース',
+              enabled: true,
+              muted: false,
+              isCustom: false,
+            },
+            {
+              packId: 'tech-jp',
+              siteId: 'site-tech',
+              name: 'Tech',
+              rssUrl: 'https://example.com/tech.xml',
+              category: 'エンジニア',
+              enabled: true,
+              muted: false,
+              isCustom: false,
+            },
+            {
+              packId: 'news-jp',
+              siteId: 'site-disabled',
+              name: 'Disabled News',
+              rssUrl: 'https://example.com/news.xml',
+              category: '総合ニュース',
+              enabled: false,
+              muted: false,
+              isCustom: false,
+            },
+          ];
+        },
+      },
+      networkState: {
+        async getNetworkStateAsync() {
+          return { type: 'WIFI', isConnected: true };
+        },
+      },
+      fileStore: store,
+      fetcher,
+      now: () => nowMs,
+      maxBatch: 1,
+      preferredPackId: 'tech-jp',
+    });
+
+    expect(result.prefetchedCount).toBe(1);
+    expect(fetchedUrls).toEqual(['https://example.com/tech.html']);
+
+    // Run again without preferredPackId and large batch: should fetch 5ch, never disabled pack
+    fetchedUrls.length = 0;
+    const second = await runWifiPrefetchAndPurge({
+      articleRepo,
+      settingsRepo,
+      catalogRepo: {
+        async getResolvedFeeds() {
+          return [
+            {
+              packId: 'matome-5ch',
+              siteId: 'site-5ch',
+              name: '5ch',
+              rssUrl: 'https://example.com/5ch.xml',
+              category: '雑談・ニュース',
+              enabled: true,
+              muted: false,
+              isCustom: false,
+            },
+            {
+              packId: 'tech-jp',
+              siteId: 'site-tech',
+              name: 'Tech',
+              rssUrl: 'https://example.com/tech.xml',
+              category: 'エンジニア',
+              enabled: true,
+              muted: false,
+              isCustom: false,
+            },
+            {
+              packId: 'news-jp',
+              siteId: 'site-disabled',
+              name: 'Disabled News',
+              rssUrl: 'https://example.com/news.xml',
+              category: '総合ニュース',
+              enabled: false,
+              muted: false,
+              isCustom: false,
+            },
+          ];
+        },
+      },
+      networkState: {
+        async getNetworkStateAsync() {
+          return { type: 'WIFI', isConnected: true };
+        },
+      },
+      fileStore: store,
+      fetcher,
+      now: () => nowMs,
+      maxBatch: 10,
+    });
+
+    expect(second.prefetchedCount).toBe(1);
+    expect(fetchedUrls).toEqual(['https://example.com/5ch.html']);
   });
 
   test('handles HTML download failure without caching and preserves HTML when an image download fails', async () => {

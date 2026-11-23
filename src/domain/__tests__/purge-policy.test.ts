@@ -162,7 +162,7 @@ describe('selectPrefetchCandidates', () => {
         category: 'anime',
         publishedAt: NOW_MS - 2_000,
       }),
-      // Neither keyword-matched nor top-category -> excluded
+      // Neither keyword-matched nor top-category -> placed in fallback tier after top categories
       makeArticle({
         id: 'other-unread',
         category: 'misc',
@@ -190,7 +190,86 @@ describe('selectPrefetchCandidates', () => {
       'matched-older',
       'top-newer',
       'top-older',
+      'other-unread',
     ]);
+  });
+
+  test('prioritizes preferredPackId and preferredCategory ahead of matched and top-category tiers', () => {
+    const articles: Article[] = [
+      makeArticle({
+        id: '5ch-matched',
+        packId: 'matome-5ch',
+        category: 'games',
+        publishedAt: NOW_MS - 1_000,
+      }),
+      makeArticle({
+        id: '5ch-top',
+        packId: 'matome-5ch',
+        category: 'games',
+        publishedAt: NOW_MS - 2_000,
+      }),
+      makeArticle({
+        id: 'tech-other-cat',
+        packId: 'tech-jp',
+        category: 'ITニュース',
+        publishedAt: NOW_MS - 3_000,
+      }),
+      makeArticle({
+        id: 'tech-eng-older',
+        packId: 'tech-jp',
+        category: 'エンジニア',
+        publishedAt: NOW_MS - 5_000,
+      }),
+      makeArticle({
+        id: 'tech-eng-newer',
+        packId: 'tech-jp',
+        category: 'エンジニア',
+        publishedAt: NOW_MS - 4_000,
+      }),
+    ];
+
+    const selected = selectPrefetchCandidates(
+      articles,
+      new Set(['games']),
+      new Set(['5ch-matched']),
+      new Set(),
+      4,
+      { preferredPackId: 'tech-jp', preferredCategory: 'エンジニア' }
+    );
+
+    expect(selected.map((a) => a.id)).toEqual([
+      'tech-eng-newer',
+      'tech-eng-older',
+      'tech-other-cat',
+      '5ch-matched',
+    ]);
+  });
+
+  test('falls back to newest unread articles when read history and keywords are empty', () => {
+    const articles: Article[] = [
+      makeArticle({
+        id: 'tech-older',
+        packId: 'tech-jp',
+        category: 'エンジニア',
+        publishedAt: NOW_MS - 5_000,
+      }),
+      makeArticle({
+        id: 'tech-newer',
+        packId: 'tech-jp',
+        category: 'エンジニア',
+        publishedAt: NOW_MS - 1_000,
+      }),
+    ];
+
+    const selected = selectPrefetchCandidates(
+      articles,
+      new Set(),
+      new Set(),
+      new Set(),
+      10
+    );
+
+    expect(selected.map((a) => a.id)).toEqual(['tech-newer', 'tech-older']);
   });
 
   test('respects maxBatch limit', () => {

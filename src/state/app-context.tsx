@@ -15,6 +15,7 @@ import {
   DEFAULT_USER_PREFETCH_BATCH_SIZE,
   SettingsRepository,
 } from '../data/repositories/settings-repository';
+import type { PrefetchCandidateOptions } from '../domain/purge-policy';
 import type {
   Article,
   CacheEntry,
@@ -57,7 +58,9 @@ export interface AppRuntimeOverrides {
   articleRepo?: ArticleRepository;
   settingsRepo?: SettingsRepository;
   syncFn?: () => Promise<SyncAllFeedsResult>;
-  prefetchFn?: () => Promise<WifiPrefetchAndPurgeResult>;
+  prefetchFn?: (
+    options?: PrefetchCandidateOptions
+  ) => Promise<WifiPrefetchAndPurgeResult>;
   registerBackgroundFn?: () => Promise<void>;
   configureNotificationsFn?: () => Promise<void>;
   requestNotificationPermissionsFn?: () => Promise<boolean>;
@@ -77,7 +80,9 @@ interface ResolvedRuntime {
   articleRepo: ArticleRepository;
   settingsRepo: SettingsRepository;
   syncFn: () => Promise<SyncAllFeedsResult>;
-  prefetchFn: () => Promise<WifiPrefetchAndPurgeResult>;
+  prefetchFn: (
+    options?: PrefetchCandidateOptions
+  ) => Promise<WifiPrefetchAndPurgeResult>;
   registerBackgroundFn: () => Promise<void>;
   configureNotificationsFn: () => Promise<void>;
   requestNotificationPermissionsFn: () => Promise<boolean>;
@@ -110,8 +115,12 @@ export interface AppDataContextValue {
   refreshSnapshot: () => Promise<void>;
   refreshNetworkState: () => Promise<void>;
   syncNow: () => Promise<SyncAllFeedsResult | null>;
-  prefetchNow: () => Promise<WifiPrefetchAndPurgeResult | null>;
-  syncAndPrefetchNow: () => Promise<WifiPrefetchAndPurgeResult | null>;
+  prefetchNow: (
+    options?: PrefetchCandidateOptions
+  ) => Promise<WifiPrefetchAndPurgeResult | null>;
+  syncAndPrefetchNow: (
+    options?: PrefetchCandidateOptions
+  ) => Promise<WifiPrefetchAndPurgeResult | null>;
   setPrefetchBatchSize: (count: number) => Promise<void>;
   recordBlockedAds: (delta: number) => Promise<void>;
   clearPrefetchCache: () => Promise<void>;
@@ -191,14 +200,17 @@ async function buildRuntime(
       (() => syncAllFeeds({ catalogRepo, articleRepo, settingsRepo, fetcher, now })),
     prefetchFn:
       overrides?.prefetchFn ??
-      (async () => {
+      (async (options?: PrefetchCandidateOptions) => {
         const maxBatch = await settingsRepo.getPrefetchBatchSize();
         return runWifiPrefetchAndPurge({
+          catalogRepo,
           articleRepo,
           settingsRepo,
           fetcher,
           now,
           maxBatch,
+          preferredPackId: options?.preferredPackId,
+          preferredCategory: options?.preferredCategory,
         });
       }),
     registerBackgroundFn:
@@ -391,8 +403,10 @@ export function AppDataProvider({
     return task;
   }, [loadSnapshot]);
 
-  const prefetchNow =
-    useCallback(async (): Promise<WifiPrefetchAndPurgeResult | null> => {
+  const prefetchNow = useCallback(
+    async (
+      options?: PrefetchCandidateOptions
+    ): Promise<WifiPrefetchAndPurgeResult | null> => {
       const rt = runtimeRef.current;
       if (!rt) {
         return null;
@@ -406,7 +420,7 @@ export function AppDataProvider({
           setIsPrefetching(true);
         }
         try {
-          const result = await rt.prefetchFn();
+          const result = await rt.prefetchFn(options);
           await loadSnapshot(rt);
           await refreshNetworkState();
           if (mountedRef.current) {
@@ -425,7 +439,9 @@ export function AppDataProvider({
 
       prefetchInFlightRef.current = task;
       return task;
-    }, [loadSnapshot, refreshNetworkState]);
+    },
+    [loadSnapshot, refreshNetworkState]
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -805,11 +821,15 @@ export function AppDataProvider({
     [loadSnapshot]
   );
 
-  const syncAndPrefetchNow =
-    useCallback(async (): Promise<WifiPrefetchAndPurgeResult | null> => {
+  const syncAndPrefetchNow = useCallback(
+    async (
+      options?: PrefetchCandidateOptions
+    ): Promise<WifiPrefetchAndPurgeResult | null> => {
       await syncNow();
-      return prefetchNow();
-    }, [syncNow, prefetchNow]);
+      return prefetchNow(options);
+    },
+    [syncNow, prefetchNow]
+  );
 
   const setPrefetchBatchSize = useCallback(
     async (count: number): Promise<void> => {
