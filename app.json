@@ -18,7 +18,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.musubireader.app",
+      "bundleIdentifier": "me.proton.nyankoski.app.musubireader",
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch",
