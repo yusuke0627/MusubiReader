@@ -228,9 +228,18 @@ export default function ArticleReaderScreen() {
         testID="reader-back-button"
         accessibilityRole="button"
         onPress={handleBack}
-        style={[styles.toolbarBtn, { backgroundColor: colors.surfaceSecondary }]}
+        style={[
+          styles.toolbarBtn,
+          showArticleActions ? styles.toolbarBtnCompact : styles.toolbarBtnFull,
+          { backgroundColor: colors.surfaceSecondary },
+        ]}
       >
-        <Text style={[styles.toolbarBtnText, { color: colors.text }]}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={[styles.toolbarBtnText, { color: colors.text }]}
+        >
           戻る
         </Text>
       </Pressable>
@@ -244,6 +253,7 @@ export default function ArticleReaderScreen() {
             onPress={() => void handleToggleSave()}
             style={[
               styles.toolbarBtn,
+              styles.toolbarBtnWide,
               {
                 backgroundColor: article.isSaved
                   ? colors.badgeSavedBg
@@ -252,6 +262,9 @@ export default function ArticleReaderScreen() {
             ]}
           >
             <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
               style={[
                 styles.toolbarBtnText,
                 {
@@ -271,10 +284,16 @@ export default function ArticleReaderScreen() {
             onPress={() => void handleShare()}
             style={[
               styles.toolbarBtn,
+              styles.toolbarBtnCompact,
               { backgroundColor: colors.surfaceSecondary },
             ]}
           >
-            <Text style={[styles.toolbarBtnText, { color: colors.text }]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={[styles.toolbarBtnText, { color: colors.text }]}
+            >
               共有
             </Text>
           </Pressable>
@@ -285,10 +304,16 @@ export default function ArticleReaderScreen() {
             onPress={() => void handleOpenInSafari()}
             style={[
               styles.toolbarBtn,
+              styles.toolbarBtnMedium,
               { backgroundColor: colors.surfaceSecondary },
             ]}
           >
-            <Text style={[styles.toolbarBtnText, { color: colors.text }]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={[styles.toolbarBtnText, { color: colors.text }]}
+            >
               Safariで開く
             </Text>
           </Pressable>
@@ -363,6 +388,7 @@ export default function ArticleReaderScreen() {
           testID="reader-offline-indicator"
           style={[
             styles.statusBanner,
+            styles.statusBannerWithAction,
             {
               backgroundColor: colors.badgeSuccessBg,
               borderBottomColor: colors.border,
@@ -370,9 +396,15 @@ export default function ArticleReaderScreen() {
           ]}
         >
           <Text
-            style={[styles.statusBannerText, { color: colors.badgeSuccessText }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[
+              styles.statusBannerText,
+              styles.statusBannerTextFlex,
+              { color: colors.badgeSuccessText },
+            ]}
           >
-            オフラインキャッシュを表示中
+            オフライン
             {lastDurationMs !== null ? `（${lastDurationMs}ms）` : ''}
             {blockedCount !== null && blockedCount > 0
               ? `・🛡️ ${blockedCount}件カット`
@@ -387,7 +419,10 @@ export default function ArticleReaderScreen() {
               { backgroundColor: colors.surface },
             ]}
           >
-            <Text style={[styles.bannerActionText, { color: colors.text }]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.bannerActionText, { color: colors.text }]}
+            >
               オンライン表示
             </Text>
           </Pressable>
@@ -396,14 +431,23 @@ export default function ArticleReaderScreen() {
         <View
           style={[
             styles.statusBanner,
+            styles.statusBannerWithAction,
             {
               backgroundColor: colors.surfaceSecondary,
               borderBottomColor: colors.border,
             },
           ]}
         >
-          <Text style={[styles.statusBannerText, { color: colors.textSecondary }]}>
-            オンライン表示中
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[
+              styles.statusBannerText,
+              styles.statusBannerTextFlex,
+              { color: colors.textSecondary },
+            ]}
+          >
+            オンライン
             {lastDurationMs !== null ? `（${lastDurationMs}ms）` : ''}
             {blockedCount !== null && blockedCount > 0
               ? `・🛡️ ${blockedCount}件カット`
@@ -419,12 +463,13 @@ export default function ArticleReaderScreen() {
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.bannerActionText,
                 { color: colors.badgeSuccessText },
               ]}
             >
-              ダウンロード済みキャッシュで表示
+              キャッシュ表示
             </Text>
           </Pressable>
         </View>
@@ -506,11 +551,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  statusBannerWithAction: {
+    justifyContent: 'space-between',
+  },
   bannerActionBtn: {
+    flexShrink: 0,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -520,8 +569,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statusBannerText: {
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: '600',
+  },
+  statusBannerTextFlex: {
+    flex: 1,
   },
   centerBox: {
     flex: 1,
@@ -544,18 +597,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: 12,
+    gap: 6,
+    paddingHorizontal: 10,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   toolbarBtn: {
-    flex: 1,
+    minHeight: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 9,
+    paddingVertical: 8,
     paddingHorizontal: 6,
     borderRadius: 10,
+  },
+  toolbarBtnFull: {
+    flex: 1,
+  },
+  toolbarBtnCompact: {
+    flex: 0.75,
+  },
+  toolbarBtnMedium: {
+    flex: 1.15,
+  },
+  toolbarBtnWide: {
+    flex: 1.65,
   },
   toolbarBtnText: {
     fontSize: 12,
