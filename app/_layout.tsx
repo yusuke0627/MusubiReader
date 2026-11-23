@@ -67,7 +67,7 @@ function RootLayoutNav() {
         />
         <Stack.Screen
           name="benchmark"
-          options={{ title: '先読み速度ベンチマーク', headerBackTitle: '戻る' }}
+          options={{ title: 'ダウンロード速度ベンチマーク', headerBackTitle: '戻る' }}
         />
       </Stack>
     </ThemeProvider>

@@ -245,7 +245,7 @@ export default function BenchmarkScreen() {
       contentContainerStyle={styles.content}
     >
       <Stack.Screen
-        options={{ title: '先読み速度ベンチマーク', headerBackTitle: '戻る' }}
+        options={{ title: 'ダウンロード速度ベンチマーク', headerBackTitle: '戻る' }}
       />
 
       <View
@@ -255,13 +255,13 @@ export default function BenchmarkScreen() {
         ]}
       >
         <Text style={[styles.title, { color: colors.text }]}>
-          先読みキャッシュ vs ネットワーク直読み
+          ダウンロード済みキャッシュ vs ネットワーク直読み
         </Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          現在の回線: {networkLabel}（対象: 先読み済み {targets.length}件）
+          現在の回線: {networkLabel}（対象: ダウンロード済み {targets.length}件）
         </Text>
         <Text style={[styles.caption, { color: colors.textMuted }]}>
-          同じ記事を「①先読みキャッシュ利用」と「②キャッシュ未使用（HTTPキャッシュ無視）」で連続計測します。Wi-Fi
+          同じ記事を「①ダウンロード済みキャッシュ利用」と「②キャッシュ未使用（HTTPキャッシュ無視）」で連続計測します。Wi-Fi
           と 5G でそれぞれ測ると差が一目でわかります。
         </Text>
 
@@ -320,7 +320,7 @@ export default function BenchmarkScreen() {
               <Text
                 style={[styles.secondaryBtnText, { color: colors.accentText }]}
               >
-                {isPrefetching ? '先読み中…' : '先にWi-Fi先読みを実行'}
+                {isPrefetching ? 'ダウンロード中…' : '先にWi-Fiダウンロードを実行'}
               </Text>
             </Pressable>
           ) : null}
@@ -331,7 +331,7 @@ export default function BenchmarkScreen() {
         <View style={styles.centerRow}>
           <ActivityIndicator size="small" color={colors.accent} />
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            先読み済み記事を確認中…
+            ダウンロード済み記事を確認中…
           </Text>
         </View>
       ) : null}
@@ -351,7 +351,7 @@ export default function BenchmarkScreen() {
             計測サマリー（{summary.completedPairs}件平均・{networkLabel}）
           </Text>
           <Text style={[styles.metricLine, { color: colors.badgeSuccessText }]}>
-            先読みキャッシュ平均: {summary.avgCacheMs} ms
+            ダウンロード済み平均: {summary.avgCacheMs} ms
           </Text>
           <Text style={[styles.metricLine, { color: colors.badgeSuccessText }]}>
             ネットワーク直読み平均: {summary.avgNetworkMs} ms
@@ -386,7 +386,7 @@ export default function BenchmarkScreen() {
             </Text>
             <View style={styles.resultGrid}>
               <Text style={[styles.metricLine, { color: colors.text }]}>
-                先読み利用:{' '}
+                ダウンロード利用:{' '}
                 {sample.cacheMs !== null
                   ? timedOutKeys[`${sample.articleId}:cache`]
                     ? `> ${sample.cacheMs} ms (タイムアウト)`
@@ -423,7 +423,7 @@ export default function BenchmarkScreen() {
         >
           <Text style={[styles.caption, { color: colors.textSecondary }]}>
             計測用 WebView 実行中: {activeTarget.article.siteName}（
-            {activeRun.mode === 'cache' ? '先読みキャッシュ' : 'ネットワーク直読み'}）
+            {activeRun.mode === 'cache' ? 'ダウンロード済みキャッシュ' : 'ネットワーク直読み'}）
           </Text>
           <View style={styles.previewWebViewBox}>
             <MusubiWebView
