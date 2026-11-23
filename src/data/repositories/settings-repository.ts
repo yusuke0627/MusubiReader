@@ -22,6 +22,22 @@ import {
  * Manages user-owned settings and curation rules: interest keywords, NG words,
  * pack toggles, per-site mute overrides, and custom RSS feeds.
  */
+const PREFETCH_BATCH_SIZE_KEY = 'prefetch_batch_size';
+export const DEFAULT_USER_PREFETCH_BATCH_SIZE = 20;
+export const PREFETCH_BATCH_SIZE_OPTIONS = [10, 20, 30, 50, 100] as const;
+const MIN_PREFETCH_BATCH_SIZE = 1;
+const MAX_PREFETCH_BATCH_SIZE = 200;
+
+export function clampPrefetchBatchSize(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_USER_PREFETCH_BATCH_SIZE;
+  }
+  return Math.max(
+    MIN_PREFETCH_BATCH_SIZE,
+    Math.min(MAX_PREFETCH_BATCH_SIZE, Math.floor(value))
+  );
+}
+
 export class SettingsRepository {
   constructor(private readonly db: SQLiteDatabaseLike) {}
 
@@ -183,6 +199,36 @@ export class SettingsRepository {
     await this.db.runAsync('DELETE FROM custom_feeds WHERE site_id = ?', [
       siteId,
     ]);
+  }
+
+  // --- app_preferences ---
+
+  async getPrefetchBatchSize(): Promise<number> {
+    const row = await this.db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM app_preferences WHERE key = ?',
+      [PREFETCH_BATCH_SIZE_KEY]
+    );
+    if (!row) {
+      return DEFAULT_USER_PREFETCH_BATCH_SIZE;
+    }
+    const parsed = Number(row.value);
+    return clampPrefetchBatchSize(parsed);
+  }
+
+  async setPrefetchBatchSize(
+    count: number,
+    updatedAt: number = Date.now()
+  ): Promise<number> {
+    const clamped = clampPrefetchBatchSize(count);
+    await this.db.runAsync(
+      `INSERT INTO app_preferences (key, value, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_at = excluded.updated_at`,
+      [PREFETCH_BATCH_SIZE_KEY, String(clamped), updatedAt]
+    );
+    return clamped;
   }
 
   // --- shared helpers ---

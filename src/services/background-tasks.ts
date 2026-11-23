@@ -89,7 +89,8 @@ export async function executeBackgroundPrefetchTask(
       await runPrefetch();
     } else {
       const { articleRepo, settingsRepo } = await createRepositories();
-      await runWifiPrefetchAndPurge({ articleRepo, settingsRepo });
+      const maxBatch = await settingsRepo.getPrefetchBatchSize();
+      await runWifiPrefetchAndPurge({ articleRepo, settingsRepo, maxBatch });
     }
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {

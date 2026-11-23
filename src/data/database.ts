@@ -141,6 +141,12 @@ CREATE TABLE IF NOT EXISTS prefetch_cache (
   cached_at INTEGER NOT NULL,
   last_accessed_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS app_preferences (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 /**
