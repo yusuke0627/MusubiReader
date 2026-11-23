@@ -780,4 +780,24 @@ describe('SettingsRepository', () => {
       raw.close();
     }
   });
+
+  test('SettingsRepository persists and clamps user prefetch batch size', async () => {
+    const { adapter, raw } = createInMemorySQLiteAdapter();
+    try {
+      const db = await openDatabase(adapter);
+      const settingsRepo = new SettingsRepository(db);
+
+      expect(await settingsRepo.getPrefetchBatchSize()).toBe(20);
+      await settingsRepo.setPrefetchBatchSize(50, 1000);
+      expect(await settingsRepo.getPrefetchBatchSize()).toBe(50);
+
+      await settingsRepo.setPrefetchBatchSize(0, 2000);
+      expect(await settingsRepo.getPrefetchBatchSize()).toBe(1);
+
+      await settingsRepo.setPrefetchBatchSize(999, 3000);
+      expect(await settingsRepo.getPrefetchBatchSize()).toBe(200);
+    } finally {
+      raw.close();
+    }
+  });
 });

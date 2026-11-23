@@ -1019,4 +1019,77 @@ describe('MusubiReader UI smoke tests', () => {
     });
     close();
   });
+
+  test('HomeScreen prefetch CTA triggers sync+prefetch and SourcesScreen updates prefetch batch size', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const settingsRepo = new SettingsRepository(db);
+    const syncSpy = jest.fn(async () => ({
+      fetchedFeeds: 1,
+      failedFeeds: 0,
+      newArticles: 0,
+      newKeywordMatches: [],
+    }));
+    const prefetchSpy = jest.fn(async () => ({
+      skippedNotWifi: false,
+      prefetchedCount: 5,
+      purgedCacheCount: 0,
+      purgedMetadataCount: 0,
+    }));
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo: new CatalogRepository(db),
+      articleRepo: new ArticleRepository(db),
+      settingsRepo,
+      syncFn: syncSpy,
+      prefetchFn: prefetchSpy,
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+          <SourcesScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const initialSyncCalls = syncSpy.mock.calls.length;
+    const initialPrefetchCalls = prefetchSpy.mock.calls.length;
+
+    const batch50Btn = findByTestId(
+      root.container,
+      'prefetch-batch-option-50'
+    );
+    await act(async () => {
+      pressNode(batch50Btn);
+    });
+    await flushEffects();
+    expect(await settingsRepo.getPrefetchBatchSize()).toBe(50);
+
+    const homePrefetchBtn = findByTestId(
+      root.container,
+      'home-prefetch-button'
+    );
+    await act(async () => {
+      pressNode(homePrefetchBtn);
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(syncSpy.mock.calls.length).toBeGreaterThan(initialSyncCalls);
+    expect(prefetchSpy.mock.calls.length).toBeGreaterThan(initialPrefetchCalls);
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
+  });
 });

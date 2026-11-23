@@ -11,7 +11,10 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { openDatabase, type SQLiteDatabaseLike } from '../data/database';
 import { ArticleRepository } from '../data/repositories/article-repository';
 import { CatalogRepository } from '../data/repositories/catalog-repository';
-import { SettingsRepository } from '../data/repositories/settings-repository';
+import {
+  DEFAULT_USER_PREFETCH_BATCH_SIZE,
+  SettingsRepository,
+} from '../data/repositories/settings-repository';
 import type {
   Article,
   CacheEntry,
@@ -101,11 +104,14 @@ export interface AppDataContextValue {
   lastSyncResult: SyncAllFeedsResult | null;
   isPrefetching: boolean;
   lastPrefetchResult: WifiPrefetchAndPurgeResult | null;
+  prefetchBatchSize: number;
   dataVersion: number;
   refreshSnapshot: () => Promise<void>;
   refreshNetworkState: () => Promise<void>;
   syncNow: () => Promise<SyncAllFeedsResult | null>;
   prefetchNow: () => Promise<WifiPrefetchAndPurgeResult | null>;
+  syncAndPrefetchNow: () => Promise<WifiPrefetchAndPurgeResult | null>;
+  setPrefetchBatchSize: (count: number) => Promise<void>;
   clearPrefetchCache: () => Promise<void>;
   listArticlesByPackAndCategory: (
     packId: string,
@@ -183,7 +189,16 @@ async function buildRuntime(
       (() => syncAllFeeds({ catalogRepo, articleRepo, settingsRepo, fetcher, now })),
     prefetchFn:
       overrides?.prefetchFn ??
-      (() => runWifiPrefetchAndPurge({ articleRepo, settingsRepo, fetcher, now })),
+      (async () => {
+        const maxBatch = await settingsRepo.getPrefetchBatchSize();
+        return runWifiPrefetchAndPurge({
+          articleRepo,
+          settingsRepo,
+          fetcher,
+          now,
+          maxBatch,
+        });
+      }),
     registerBackgroundFn:
       overrides?.registerBackgroundFn ?? (() => registerBackgroundTasks()),
     configureNotificationsFn:
@@ -261,6 +276,9 @@ export function AppDataProvider({
   const [isPrefetching, setIsPrefetching] = useState(false);
   const [lastPrefetchResult, setLastPrefetchResult] =
     useState<WifiPrefetchAndPurgeResult | null>(null);
+  const [prefetchBatchSize, setPrefetchBatchSizeState] = useState<number>(
+    DEFAULT_USER_PREFETCH_BATCH_SIZE
+  );
   const [dataVersion, setDataVersion] = useState(0);
 
   const loadSnapshot = useCallback(async (rt: ResolvedRuntime) => {
@@ -275,6 +293,7 @@ export function AppDataProvider({
       keywords,
       ngs,
       caches,
+      batchSize,
     ] = await Promise.all([
       rt.catalogRepo.getResolvedFeeds(),
       rt.settingsRepo.listPackSettings(),
@@ -283,6 +302,7 @@ export function AppDataProvider({
       rt.settingsRepo.listInterestKeywords(),
       rt.settingsRepo.listNgWords(),
       rt.articleRepo.listCacheEntries(),
+      rt.settingsRepo.getPrefetchBatchSize(),
     ]);
 
     if (!mountedRef.current) {
@@ -297,6 +317,7 @@ export function AppDataProvider({
     setInterestKeywords(keywords);
     setNgWords(ngs);
     setCacheEntries(caches);
+    setPrefetchBatchSizeState(batchSize);
     setDataVersion((v) => v + 1);
   }, []);
 
@@ -778,6 +799,24 @@ export function AppDataProvider({
     [loadSnapshot]
   );
 
+  const syncAndPrefetchNow =
+    useCallback(async (): Promise<WifiPrefetchAndPurgeResult | null> => {
+      await syncNow();
+      return prefetchNow();
+    }, [syncNow, prefetchNow]);
+
+  const setPrefetchBatchSize = useCallback(
+    async (count: number): Promise<void> => {
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return;
+      }
+      await rt.settingsRepo.setPrefetchBatchSize(count, rt.now());
+      await loadSnapshot(rt);
+    },
+    [loadSnapshot]
+  );
+
   const clearPrefetchCache = useCallback(async () => {
     const rt = runtimeRef.current;
     if (!rt) {
@@ -815,11 +854,14 @@ export function AppDataProvider({
       lastSyncResult,
       isPrefetching,
       lastPrefetchResult,
+      prefetchBatchSize,
       dataVersion,
       refreshSnapshot,
       refreshNetworkState,
       syncNow,
       prefetchNow,
+      syncAndPrefetchNow,
+      setPrefetchBatchSize,
       clearPrefetchCache,
       listArticlesByPackAndCategory,
       listPickupArticles,
@@ -854,11 +896,14 @@ export function AppDataProvider({
       lastSyncResult,
       isPrefetching,
       lastPrefetchResult,
+      prefetchBatchSize,
       dataVersion,
       refreshSnapshot,
       refreshNetworkState,
       syncNow,
       prefetchNow,
+      syncAndPrefetchNow,
+      setPrefetchBatchSize,
       clearPrefetchCache,
       listArticlesByPackAndCategory,
       listPickupArticles,

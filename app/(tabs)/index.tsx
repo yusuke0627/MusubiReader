@@ -27,9 +27,15 @@ export default function HomeScreen() {
     resolvedFeeds,
     packSettings,
     customFeeds,
+    cacheEntries,
+    networkState,
     isSyncing,
+    isPrefetching,
+    lastPrefetchResult,
+    prefetchBatchSize,
     dataVersion,
     syncNow,
+    syncAndPrefetchNow,
     listArticlesByPackAndCategory,
     toggleSaved,
     muteSite,
@@ -233,18 +239,48 @@ export default function HomeScreen() {
         onSelectCategory={setSelectedCategory}
       />
 
-      {isSyncing ? (
-        <View
-          style={[
-            styles.syncBanner,
-            { backgroundColor: colors.accentSoft, borderBottomColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.syncBannerText, { color: colors.accentText }]}>
-            新着記事をバックグラウンドで取得中…
+      <View
+        style={[
+          styles.prefetchBar,
+          { backgroundColor: colors.surface, borderBottomColor: colors.border },
+        ]}
+      >
+        <View style={styles.prefetchStatus}>
+          <Text
+            numberOfLines={1}
+            style={[styles.prefetchStatusText, { color: colors.textSecondary }]}
+          >
+            {isSyncing
+              ? '最新記事を取得中…'
+              : isPrefetching
+                ? `Wi-Fi先読み中（最大${prefetchBatchSize}件）…`
+                : lastPrefetchResult?.skippedNotWifi
+                  ? 'Wi-Fi未接続のため先読み待機中'
+                  : `先読み済み ${cacheEntries.length}件${
+                      networkState?.type === 'WIFI' ? '・Wi-Fi接続中' : ''
+                    }`}
           </Text>
         </View>
-      ) : null}
+        <Pressable
+          testID="home-prefetch-button"
+          accessibilityRole="button"
+          disabled={isSyncing || isPrefetching}
+          onPress={() => void syncAndPrefetchNow()}
+          style={[
+            styles.prefetchBtn,
+            {
+              backgroundColor:
+                isSyncing || isPrefetching ? colors.border : colors.accent,
+            },
+          ]}
+        >
+          <Text style={styles.prefetchBtnText}>
+            {isSyncing || isPrefetching
+              ? '実行中…'
+              : `Wi-Fi先読み (${prefetchBatchSize}件)`}
+          </Text>
+        </Pressable>
+      </View>
 
       <FlatList
         data={articles}
@@ -277,14 +313,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  syncBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+  prefetchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  syncBannerText: {
+  prefetchStatus: {
+    flex: 1,
+  },
+  prefetchStatusText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  prefetchBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  prefetchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   listContent: {
     paddingVertical: 8,

@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { PREFETCH_BATCH_SIZE_OPTIONS } from '../../src/data/repositories/settings-repository';
 import { useAppData } from '../../src/state/app-context';
 import { useThemeColors } from '../../src/theme/tokens';
 
@@ -35,6 +36,7 @@ export default function SourcesScreen() {
     networkState,
     isPrefetching,
     lastPrefetchResult,
+    prefetchBatchSize,
     refreshNetworkState,
     setPackEnabled,
     addCustomFeed,
@@ -44,6 +46,7 @@ export default function SourcesScreen() {
     addNgWord,
     deleteNgWord,
     prefetchNow,
+    setPrefetchBatchSize,
     clearPrefetchCache,
   } = useAppData();
 
@@ -458,6 +461,47 @@ export default function SourcesScreen() {
           先読みキャッシュ: {cacheEntries.length}件（合計{' '}
           {formatBytes(totalCacheBytes)}）
         </Text>
+
+        <Text
+          style={[
+            styles.rowSubtitle,
+            { color: colors.textSecondary, marginTop: 8, fontWeight: '600' },
+          ]}
+        >
+          1回の先読み上限件数（現在: {prefetchBatchSize}件）
+        </Text>
+        <View style={styles.batchOptionRow}>
+          {PREFETCH_BATCH_SIZE_OPTIONS.map((count) => {
+            const selected = prefetchBatchSize === count;
+            return (
+              <Pressable
+                key={count}
+                testID={`prefetch-batch-option-${count}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => void setPrefetchBatchSize(count)}
+                style={[
+                  styles.batchChip,
+                  {
+                    backgroundColor: selected
+                      ? colors.accent
+                      : colors.surfaceSecondary,
+                    borderColor: selected ? colors.accent : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.batchChipText,
+                    { color: selected ? '#FFFFFF' : colors.text },
+                  ]}
+                >
+                  {count}件
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
         {lastPrefetchResult ? (
           <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>
             直近の実行:{' '}
@@ -631,5 +675,22 @@ const styles = StyleSheet.create({
   },
   flexBtn: {
     flex: 1,
+  },
+  batchOptionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  batchChip: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  batchChipText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
