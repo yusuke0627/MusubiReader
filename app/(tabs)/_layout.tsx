@@ -61,6 +61,23 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="bookmarks"
+        options={{
+          title: 'ブックマーク',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: 'bookmark',
+                android: 'bookmark',
+                web: 'bookmark',
+              }}
+              tintColor={color}
+              size={22}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="sources"
         options={{
           title: 'ソース・設定',

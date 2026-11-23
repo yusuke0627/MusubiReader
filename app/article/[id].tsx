@@ -246,7 +246,7 @@ export default function ArticleReaderScreen() {
                 },
               ]}
             >
-              {article.isSaved ? '保存済み' : '後で読む'}
+              {article.isSaved ? '★ ブックマーク済み' : '☆ ブックマーク'}
             </Text>
           </Pressable>
 

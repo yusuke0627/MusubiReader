@@ -15,8 +15,6 @@ import type { Article } from '../../src/domain/types';
 import { useAppData } from '../../src/state/app-context';
 import { useThemeColors } from '../../src/theme/tokens';
 
-type PickupSegment = 'matched' | 'saved';
-
 interface PickupDisplayItem {
   article: Article;
   matchedKeywords?: string[];
@@ -33,14 +31,12 @@ export default function PickupScreen() {
     dataVersion,
     syncNow,
     listPickupArticles,
-    listSavedArticles,
     addInterestKeyword,
     deleteInterestKeyword,
     toggleSaved,
     muteSite,
   } = useAppData();
 
-  const [segment, setSegment] = useState<PickupSegment>('matched');
   const [keywordDraft, setKeywordDraft] = useState('');
   const [items, setItems] = useState<PickupDisplayItem[]>([]);
 
@@ -51,18 +47,11 @@ export default function PickupScreen() {
       return;
     }
     const requestId = ++loadRequestIdRef.current;
-    if (segment === 'matched') {
-      const matched = await listPickupArticles();
-      if (loadRequestIdRef.current === requestId) {
-        setItems(matched);
-      }
-    } else {
-      const saved = await listSavedArticles();
-      if (loadRequestIdRef.current === requestId) {
-        setItems(saved.map((article) => ({ article })));
-      }
+    const matched = await listPickupArticles();
+    if (loadRequestIdRef.current === requestId) {
+      setItems(matched);
     }
-  }, [isReady, initError, segment, listPickupArticles, listSavedArticles]);
+  }, [isReady, initError, listPickupArticles]);
 
   useEffect(() => {
     void loadItems();
@@ -97,12 +86,7 @@ export default function PickupScreen() {
     [muteSite]
   );
 
-  const renderKeywordsHeader = () => {
-    if (segment !== 'matched') {
-      return null;
-    }
-
-    return (
+  const renderKeywordsHeader = () => (
       <View
         style={[
           styles.keywordPanel,
@@ -181,90 +165,21 @@ export default function PickupScreen() {
           </Text>
         )}
       </View>
-    );
-  };
+  );
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Text style={[styles.emptyTitle, { color: colors.text }]}>
-        {segment === 'matched'
-          ? '一致する記事がまだありません'
-          : '保存済みの記事はまだありません'}
+        一致する記事がまだありません
       </Text>
       <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-        {segment === 'matched'
-          ? '興味ワードを登録すると、5chまとめ・Tech・マイRSSを横断して一致した記事が表示されます。'
-          : '記事の「メニュー」から「後で読む」を選ぶとここに保存されます。'}
+        興味ワードを登録すると、5chまとめ・Tech・マイRSSを横断して一致した記事が表示されます。
       </Text>
     </View>
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View
-        style={[
-          styles.segmentBar,
-          { backgroundColor: colors.surface, borderBottomColor: colors.border },
-        ]}
-      >
-        <View
-          style={[
-            styles.segmentTrack,
-            { backgroundColor: colors.surfaceSecondary },
-          ]}
-        >
-          <Pressable
-            testID="pickup-segment-matched"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: segment === 'matched' }}
-            onPress={() => setSegment('matched')}
-            style={[
-              styles.segmentTab,
-              segment === 'matched'
-                ? { backgroundColor: colors.surface }
-                : undefined,
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                {
-                  color:
-                    segment === 'matched' ? colors.text : colors.textSecondary,
-                },
-              ]}
-            >
-              キーワード一致
-            </Text>
-          </Pressable>
-
-          <Pressable
-            testID="pickup-segment-saved"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: segment === 'saved' }}
-            onPress={() => setSegment('saved')}
-            style={[
-              styles.segmentTab,
-              segment === 'saved'
-                ? { backgroundColor: colors.surface }
-                : undefined,
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                {
-                  color:
-                    segment === 'saved' ? colors.text : colors.textSecondary,
-                },
-              ]}
-            >
-              保存済み
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
       {renderKeywordsHeader()}
 
       <FlatList
@@ -286,7 +201,7 @@ export default function PickupScreen() {
             matchedKeywords={item.matchedKeywords}
             onPress={handleOpenArticle}
             onToggleSave={handleToggleSave}
-            onMuteSite={segment === 'matched' ? handleMuteSite : undefined}
+            onMuteSite={handleMuteSite}
           />
         )}
         ListEmptyComponent={renderEmpty}
