@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MusubiReader — 高速・広告ブロック対応 RSS リーダー</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --accent: #ff4d5a;
+      --accent-soft: rgba(255, 77, 90, 0.12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1120;
+        --surface: #131c31;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #243047;
+        --accent: #ff6b76;
+        --accent-soft: rgba(255, 107, 118, 0.16);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 20px 64px;
+    }
+    .hero {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px 24px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .badge {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 16px;
+    }
+    .card p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 20px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="badge">iOS RSS &amp; まとめリーダー</div>
+      <h1>MusubiReader</h1>
+      <p class="subtitle">
+        Wi-Fi 事前ダウンロード・ネイティブ広告ブロック・キーワード通知を備えた、<br />
+        完全オンデバイス型の高速 RSS リーダーアプリです。
+      </p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h2>⚡ Wi-Fi ダウンロード</h2>
+        <p>Wi-Fi 接続時に記事の HTML と主要画像を端末内へ事前保存。地下鉄や低速回線でもサクッと開けます。</p>
+      </div>
+      <div class="card">
+        <h2>🛡️ ネイティブ広告ブロック</h2>
+        <p>iOS の WKContentRuleList を活用し、邪魔な広告やトラッカーをOSレベルで軽量にカットします。</p>
+      </div>
+      <div class="card">
+        <h2>🔒 プライバシー最優先</h2>
+        <p>アカウント登録不要・トラッキングゼロ。購読設定やブックマークはすべてお使いの端末内にのみ保存されます。</p>
+      </div>
+    </section>
+
+    <nav class="links" aria-label="関連ページ">
+      <a class="btn btn-primary" href="./privacy.html">プライバシーポリシー</a>
+      <a class="btn" href="./support.html">サポート・お問い合わせ</a>
+      <a class="btn" href="https://github.com/yusuke0627/MusubiReader" rel="noopener noreferrer">GitHub リポジトリ</a>
+    </nav>
+
+    <footer>
+      <p>&copy; 2026 MusubiReader</p>
+    </footer>
+  </main>
+</body>
+</html>

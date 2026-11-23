@@ -725,6 +725,28 @@ describe('MusubiReader UI smoke tests', () => {
     expect(await articleRepo.listCacheEntries()).toHaveLength(0);
     expect(deletedPaths.length).toBeGreaterThan(0);
 
+    // App info links (Privacy Policy, Support, Version)
+    const { Linking } = require('react-native') as typeof import('react-native');
+    const openUrlSpy = jest
+      .spyOn(Linking, 'openURL')
+      .mockResolvedValue(undefined);
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'open-privacy-policy-button'));
+    });
+    expect(openUrlSpy).toHaveBeenCalledWith(
+      'https://yusuke0627.github.io/MusubiReader/privacy.html'
+    );
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'open-support-button'));
+    });
+    expect(openUrlSpy).toHaveBeenCalledWith(
+      'https://yusuke0627.github.io/MusubiReader/support.html'
+    );
+    expect(extractAllText(findByTestId(root.container, 'app-version-text'))).toContain(
+      '1.0.0'
+    );
+    openUrlSpy.mockRestore();
+
     await act(async () => {
       root.unmount();
     });

@@ -6,6 +6,7 @@ on:
     paths:
       - 'assets/catalog/**'
       - 'assets/adblock/**'
+      - 'docs/site/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -38,11 +39,12 @@ jobs:
       - name: Validate bundled catalog and ad-block JSON schemas
         run: npx jest src/__tests__/bundled-assets.test.ts
 
-      - name: Stage static JSON site
+      - name: Stage static JSON and documentation site
         run: |
           mkdir -p _site/catalog _site/adblock
           cp assets/catalog/default-packs.json _site/catalog/default-packs.json
           cp assets/adblock/default-rules.json _site/adblock/default-rules.json
+          cp -r docs/site/. _site/
           touch _site/.nojekyll
 
       - name: Configure Pages
