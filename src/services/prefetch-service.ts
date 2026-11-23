@@ -308,17 +308,21 @@ export function extractStylesheetUrls(
   return urls;
 }
 
+export interface RewrittenCachedHtmlResult {
+  readonly html: string;
+  readonly blockedCount: number;
+}
+
 /**
- * Rewrites matched `<img>` tags in cached HTML to reference locally downloaded
- * relative `img-*` files, inlines downloaded stylesheets, removes `<base>` / scripts / iframes,
- * normalizes charset meta tags to UTF-8, and ensures a mobile viewport + responsive guard CSS.
+ * Rewrites cached HTML and returns both the output HTML and the exact count of
+ * stripped `<script>` / `<iframe>` elements embedded in `<meta name="musubi-blocked-count">`.
  */
-export function rewriteCachedHtml(
+export function rewriteCachedHtmlWithStats(
   html: string,
   baseUrl: string,
   localFilesByUrl: ReadonlyMap<string, string>,
   inlinedStylesByUrl?: ReadonlyMap<string, string>
-): string {
+): RewrittenCachedHtmlResult {
   let updated = html.replace(IMG_TAG_REGEX, (tag) => {
     const resolvedUrl = resolveFirstImageUrlFromTag(tag, baseUrl);
     if (!resolvedUrl) {
@@ -358,9 +362,19 @@ export function rewriteCachedHtml(
   updated = updated.replace(BASE_TAG_REGEX, '');
 
   // Strip external scripts and iframes so cached local HTML renders immediately without slow network stalls.
-  updated = updated.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-  updated = updated.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
-  updated = updated.replace(/<iframe\b[^>]*\/?>/gi, '');
+  let blockedCount = 0;
+  updated = updated.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, () => {
+    blockedCount += 1;
+    return '';
+  });
+  updated = updated.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, () => {
+    blockedCount += 1;
+    return '';
+  });
+  updated = updated.replace(/<iframe\b[^>]*\/?>/gi, () => {
+    blockedCount += 1;
+    return '';
+  });
 
   let hasCharsetMeta = false;
   let hasViewportMeta = false;
@@ -385,6 +399,9 @@ export function rewriteCachedHtml(
       '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
     );
   }
+  headInjections.push(
+    `<meta name="musubi-blocked-count" content="${blockedCount}">`
+  );
   headInjections.push(SAFE_MOBILE_STYLE_TAG);
   const injectionHtml = headInjections.join('');
 
@@ -402,7 +419,26 @@ export function rewriteCachedHtml(
     updated = `${injectionHtml}${updated}`;
   }
 
-  return updated;
+  return { html: updated, blockedCount };
+}
+
+/**
+ * Rewrites matched `<img>` tags in cached HTML to reference locally downloaded
+ * relative `img-*` files, inlines downloaded stylesheets, removes `<base>` / scripts / iframes,
+ * normalizes charset meta tags to UTF-8, and ensures a mobile viewport + responsive guard CSS.
+ */
+export function rewriteCachedHtml(
+  html: string,
+  baseUrl: string,
+  localFilesByUrl: ReadonlyMap<string, string>,
+  inlinedStylesByUrl?: ReadonlyMap<string, string>
+): string {
+  return rewriteCachedHtmlWithStats(
+    html,
+    baseUrl,
+    localFilesByUrl,
+    inlinedStylesByUrl
+  ).html;
 }
 
 /**

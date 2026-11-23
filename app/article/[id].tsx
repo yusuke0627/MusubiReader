@@ -38,6 +38,7 @@ export default function ArticleReaderScreen() {
     getArticleById,
     getCacheEntry,
     recordArticleRead,
+    recordBlockedAds,
     toggleSaved,
   } = useAppData();
 
@@ -48,10 +49,12 @@ export default function ArticleReaderScreen() {
   const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
   const [preferCache, setPreferCache] = useState(true);
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
+  const [blockedCount, setBlockedCount] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isTogglingSave, setIsTogglingSave] = useState(false);
 
   const recordedArticleIdRef = useRef<string | null>(null);
+  const recordedBlockedArticleIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const activeArticleIdRef = useRef(articleId);
   activeArticleIdRef.current = articleId;
@@ -189,13 +192,25 @@ export default function ArticleReaderScreen() {
       setLastDurationMs(
         typeof payload.durationMs === 'number' ? payload.durationMs : null
       );
+      if (typeof payload.blockedCount === 'number') {
+        setBlockedCount(payload.blockedCount);
+        const currentId = activeArticleIdRef.current;
+        if (
+          payload.blockedCount > 0 &&
+          currentId &&
+          recordedBlockedArticleIdRef.current !== currentId
+        ) {
+          recordedBlockedArticleIdRef.current = currentId;
+          void recordBlockedAds(payload.blockedCount);
+        }
+      }
       if (!payload.success && payload.error) {
         setLoadError(payload.error);
       } else {
         setLoadError(null);
       }
     },
-    []
+    [recordBlockedAds]
   );
 
   const renderToolbar = (showArticleActions: boolean) => (
@@ -359,6 +374,9 @@ export default function ArticleReaderScreen() {
           >
             オフラインキャッシュを表示中
             {lastDurationMs !== null ? `（${lastDurationMs}ms）` : ''}
+            {blockedCount !== null && blockedCount > 0
+              ? `・🛡️ ${blockedCount}件カット`
+              : ''}
           </Text>
           <Pressable
             testID="reader-switch-online-button"
@@ -387,6 +405,9 @@ export default function ArticleReaderScreen() {
           <Text style={[styles.statusBannerText, { color: colors.textSecondary }]}>
             オンライン表示中
             {lastDurationMs !== null ? `（${lastDurationMs}ms）` : ''}
+            {blockedCount !== null && blockedCount > 0
+              ? `・🛡️ ${blockedCount}件カット`
+              : ''}
           </Text>
           <Pressable
             testID="reader-switch-cache-button"
@@ -406,6 +427,21 @@ export default function ArticleReaderScreen() {
               先読みキャッシュで表示
             </Text>
           </Pressable>
+        </View>
+      ) : blockedCount !== null && blockedCount > 0 ? (
+        <View
+          testID="reader-adblock-count-banner"
+          style={[
+            styles.statusBanner,
+            {
+              backgroundColor: colors.accentSoft,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
+          <Text style={[styles.statusBannerText, { color: colors.accentText }]}>
+            {`🛡️ 広告・不要要素 ${blockedCount}件カット`}
+          </Text>
         </View>
       ) : null}
 

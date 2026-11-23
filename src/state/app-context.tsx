@@ -105,6 +105,7 @@ export interface AppDataContextValue {
   isPrefetching: boolean;
   lastPrefetchResult: WifiPrefetchAndPurgeResult | null;
   prefetchBatchSize: number;
+  totalBlockedAds: number;
   dataVersion: number;
   refreshSnapshot: () => Promise<void>;
   refreshNetworkState: () => Promise<void>;
@@ -112,6 +113,7 @@ export interface AppDataContextValue {
   prefetchNow: () => Promise<WifiPrefetchAndPurgeResult | null>;
   syncAndPrefetchNow: () => Promise<WifiPrefetchAndPurgeResult | null>;
   setPrefetchBatchSize: (count: number) => Promise<void>;
+  recordBlockedAds: (delta: number) => Promise<void>;
   clearPrefetchCache: () => Promise<void>;
   listArticlesByPackAndCategory: (
     packId: string,
@@ -279,6 +281,7 @@ export function AppDataProvider({
   const [prefetchBatchSize, setPrefetchBatchSizeState] = useState<number>(
     DEFAULT_USER_PREFETCH_BATCH_SIZE
   );
+  const [totalBlockedAds, setTotalBlockedAds] = useState<number>(0);
   const [dataVersion, setDataVersion] = useState(0);
 
   const loadSnapshot = useCallback(async (rt: ResolvedRuntime) => {
@@ -294,6 +297,7 @@ export function AppDataProvider({
       ngs,
       caches,
       batchSize,
+      blockedTotal,
     ] = await Promise.all([
       rt.catalogRepo.getResolvedFeeds(),
       rt.settingsRepo.listPackSettings(),
@@ -303,6 +307,7 @@ export function AppDataProvider({
       rt.settingsRepo.listNgWords(),
       rt.articleRepo.listCacheEntries(),
       rt.settingsRepo.getPrefetchBatchSize(),
+      rt.settingsRepo.getTotalBlockedAds(),
     ]);
 
     if (!mountedRef.current) {
@@ -318,6 +323,7 @@ export function AppDataProvider({
     setNgWords(ngs);
     setCacheEntries(caches);
     setPrefetchBatchSizeState(batchSize);
+    setTotalBlockedAds(blockedTotal);
     setDataVersion((v) => v + 1);
   }, []);
 
@@ -817,6 +823,20 @@ export function AppDataProvider({
     [loadSnapshot]
   );
 
+  const recordBlockedAds = useCallback(async (delta: number): Promise<void> => {
+    const rt = runtimeRef.current;
+    if (!rt || !Number.isFinite(delta) || delta <= 0) {
+      return;
+    }
+    const nextTotal = await rt.settingsRepo.incrementTotalBlockedAds(
+      delta,
+      rt.now()
+    );
+    if (mountedRef.current) {
+      setTotalBlockedAds(nextTotal);
+    }
+  }, []);
+
   const clearPrefetchCache = useCallback(async () => {
     const rt = runtimeRef.current;
     if (!rt) {
@@ -855,6 +875,7 @@ export function AppDataProvider({
       isPrefetching,
       lastPrefetchResult,
       prefetchBatchSize,
+      totalBlockedAds,
       dataVersion,
       refreshSnapshot,
       refreshNetworkState,
@@ -862,6 +883,7 @@ export function AppDataProvider({
       prefetchNow,
       syncAndPrefetchNow,
       setPrefetchBatchSize,
+      recordBlockedAds,
       clearPrefetchCache,
       listArticlesByPackAndCategory,
       listPickupArticles,
@@ -897,6 +919,7 @@ export function AppDataProvider({
       isPrefetching,
       lastPrefetchResult,
       prefetchBatchSize,
+      totalBlockedAds,
       dataVersion,
       refreshSnapshot,
       refreshNetworkState,
@@ -904,6 +927,7 @@ export function AppDataProvider({
       prefetchNow,
       syncAndPrefetchNow,
       setPrefetchBatchSize,
+      recordBlockedAds,
       clearPrefetchCache,
       listArticlesByPackAndCategory,
       listPickupArticles,

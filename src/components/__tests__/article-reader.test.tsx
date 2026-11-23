@@ -499,4 +499,63 @@ describe('ArticleReaderScreen', () => {
     });
     close();
   });
+
+  test('displays ad-block count banner and accumulates total blocked ads once per article', async () => {
+    const { articleRepo, runtime, close } = await setupHarness();
+    const article = makeSampleArticle({ id: 'art-adblock' });
+    await articleRepo.upsertArticles([article]);
+    mockRouteParams = { id: 'art-adblock' };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <ArticleReaderScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const triggerLoadEnd = capturedWebViewProps?.onLoadEnd as
+      | ((event: { nativeEvent: Record<string, unknown> }) => void)
+      | undefined;
+
+    await act(async () => {
+      triggerLoadEnd?.({
+        nativeEvent: {
+          url: article.url,
+          success: true,
+          usedOfflineFallback: false,
+          durationMs: 120,
+          blockedCount: 7,
+        },
+      });
+    });
+    await flushEffects();
+
+    const banner = findByTestId(root.container, 'reader-adblock-count-banner');
+    expect(extractAllText(banner)).toContain('7件カット');
+    expect(await runtime.settingsRepo!.getTotalBlockedAds()).toBe(7);
+
+    // Second onLoadEnd for the same article should not double-count total
+    await act(async () => {
+      triggerLoadEnd?.({
+        nativeEvent: {
+          url: article.url,
+          success: true,
+          usedOfflineFallback: false,
+          durationMs: 110,
+          blockedCount: 7,
+        },
+      });
+    });
+    await flushEffects();
+    expect(await runtime.settingsRepo!.getTotalBlockedAds()).toBe(7);
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
+  });
 });

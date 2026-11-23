@@ -457,18 +457,78 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
     }
   }
 
+  private static let blockedCountScript = """
+    (function() {
+      try {
+        var meta = document.querySelector('meta[name="musubi-blocked-count"]');
+        var stripped = meta ? (parseInt(meta.getAttribute('content') || '0', 10) || 0) : 0;
+        var selectors = [
+          '.adsbygoogle',
+          '.ad_banner',
+          '.ad-banner',
+          '.imobile_ad',
+          '.microad',
+          '.geniee',
+          '.nend_wrapper',
+          '.adstir',
+          '.popin_recommend',
+          '.logly-lift-ad',
+          'ins.adsbygoogle',
+          'iframe[src*="doubleclick"]',
+          'iframe[src*="googlesyndication"]',
+          'iframe[src*="adingo"]',
+          'iframe[src*="i-mobile"]',
+          'iframe[src*="microad"]',
+          'iframe[src*="geniee"]',
+          'iframe[src*="ad-stir"]',
+          'iframe[src*="nend"]'
+        ].join(',');
+        var hiddenNodes = document.querySelectorAll(selectors).length;
+        return stripped + hiddenNodes;
+      } catch (e) {
+        return 0;
+      }
+    })();
+  """
+
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     let durationMs = elapsedDurationMs()
+    let eventUrl = currentEventUrl()
+    let offlineUsed = isShowingOfflineFallback
     loadStartedAt = nil
     isLoadInProgress = false
     hasFinishedInitialLoad = true
     initialLoadFailed = false
-    onLoadEnd([
-      "url": currentEventUrl(),
-      "success": true,
-      "usedOfflineFallback": isShowingOfflineFallback,
-      "durationMs": durationMs
-    ])
+
+    if !adBlockEnabled && !offlineUsed {
+      onLoadEnd([
+        "url": eventUrl,
+        "success": true,
+        "usedOfflineFallback": offlineUsed,
+        "durationMs": durationMs,
+        "blockedCount": 0
+      ])
+      return
+    }
+
+    webView.evaluateJavaScript(Self.blockedCountScript) { [weak self] result, _ in
+      Task { @MainActor in
+        guard let self else { return }
+        let count: Int
+        if let num = result as? NSNumber {
+          count = max(0, num.intValue)
+        } else {
+          count = 0
+        }
+        self.onLoadEnd([
+          "url": eventUrl,
+          "success": true,
+          "usedOfflineFallback": offlineUsed,
+          "durationMs": durationMs,
+          "blockedCount": count
+        ])
+      }
+    }
   }
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
