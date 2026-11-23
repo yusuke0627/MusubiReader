@@ -253,10 +253,10 @@ export default function HomeScreen() {
             {isSyncing
               ? '最新記事を取得中…'
               : isPrefetching
-                ? `Wi-Fi先読み中（最大${prefetchBatchSize}件）…`
+                ? `Wi-Fiダウンロード中（最大${prefetchBatchSize}件）…`
                 : lastPrefetchResult?.skippedNotWifi
-                  ? 'Wi-Fi未接続のため先読み待機中'
-                  : `先読み済み ${cacheEntries.length}件${
+                  ? 'Wi-Fi未接続のためダウンロード待機中'
+                  : `ダウンロード済み ${cacheEntries.length}件${
                       networkState?.type === 'WIFI' ? '・Wi-Fi接続中' : ''
                     }`}
           </Text>
@@ -277,7 +277,7 @@ export default function HomeScreen() {
           <Text style={styles.prefetchBtnText}>
             {isSyncing || isPrefetching
               ? '実行中…'
-              : `Wi-Fi先読み (${prefetchBatchSize}件)`}
+              : `Wi-Fiダウンロード (${prefetchBatchSize}件)`}
           </Text>
         </Pressable>
       </View>

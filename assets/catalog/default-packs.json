@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-21T00:00:00Z",
+  "updatedAt": "2026-11-23T09:30:00Z",
   "packs": [
     {
       "packId": "matome-5ch",
@@ -50,6 +50,30 @@
         },
         {
           "packId": "matome-5ch",
+          "siteId": "itainews",
+          "name": "痛いニュース(ﾉ∀`)",
+          "rssUrl": "https://itainews.com/index.rdf",
+          "category": "ニュース・雑談",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "bousoku",
+          "name": "流速VIP",
+          "rssUrl": "https://ryusoku.com/index.rdf",
+          "category": "ニュース・雑談",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
+          "siteId": "kabumatome",
+          "name": "市況かぶ全力２階建",
+          "rssUrl": "https://kabumatome.doorblog.jp/index.rdf",
+          "category": "経済・マネー",
+          "deprecated": false
+        },
+        {
+          "packId": "matome-5ch",
           "siteId": "lifehack2ch",
           "name": "ライフハックちゃんねる弐式",
           "rssUrl": "https://lifehack2ch.livedoor.biz/index.rdf",
@@ -77,7 +101,7 @@
     {
       "packId": "tech-jp",
       "name": "Tech",
-      "description": "日本の技術ブログ・開発ニュースパック",
+      "description": "日本の技術ブログ・開発ニュース・ITメディアパック",
       "defaultEnabled": false,
       "feeds": [
         {
@@ -118,6 +142,254 @@
           "name": "gihyo.jp",
           "rssUrl": "https://gihyo.jp/feed/rss2",
           "category": "エンジニア",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "itmedia-news",
+          "name": "ITmedia NEWS",
+          "rssUrl": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml",
+          "category": "ITニュース",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "gigazine",
+          "name": "GIGAZINE",
+          "rssUrl": "https://gigazine.net/news/rss_2.0/",
+          "category": "ITニュース",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "ascii-tech",
+          "name": "ASCII.jp テクノロジー",
+          "rssUrl": "https://ascii.jp/tech/rss.xml",
+          "category": "ITニュース",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "forest-watch",
+          "name": "窓の杜",
+          "rssUrl": "https://forest.watch.impress.co.jp/data/rss/1.0/wf/feed.rdf",
+          "category": "ソフトウェア",
+          "deprecated": false
+        },
+        {
+          "packId": "tech-jp",
+          "siteId": "pc-watch",
+          "name": "PC Watch",
+          "rssUrl": "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf",
+          "category": "ハードウェア",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "packId": "news-jp",
+      "name": "ニュース・経済",
+      "description": "国内の主要ニュース・ビジネス・経済メディアパック",
+      "defaultEnabled": false,
+      "feeds": [
+        {
+          "packId": "news-jp",
+          "siteId": "nhk-main",
+          "name": "NHKニュース 主要",
+          "rssUrl": "https://www3.nhk.or.jp/rss/news/cat0.xml",
+          "category": "主要ニュース",
+          "deprecated": false
+        },
+        {
+          "packId": "news-jp",
+          "siteId": "yahoo-top",
+          "name": "Yahoo!ニュース 主要",
+          "rssUrl": "https://news.yahoo.co.jp/rss/topics/top-picks.xml",
+          "category": "主要ニュース",
+          "deprecated": false
+        },
+        {
+          "packId": "news-jp",
+          "siteId": "nhk-biz",
+          "name": "NHKニュース 経済",
+          "rssUrl": "https://www3.nhk.or.jp/rss/news/cat5.xml",
+          "category": "経済・ビジネス",
+          "deprecated": false
+        },
+        {
+          "packId": "news-jp",
+          "siteId": "itmedia-biz",
+          "name": "ITmedia ビジネスオンライン",
+          "rssUrl": "https://rss.itmedia.co.jp/rss/2.0/business.xml",
+          "category": "経済・ビジネス",
+          "deprecated": false
+        },
+        {
+          "packId": "news-jp",
+          "siteId": "toyokeizai",
+          "name": "東洋経済オンライン",
+          "rssUrl": "https://toyokeizai.net/list/feed/rss",
+          "category": "経済・ビジネス",
+          "deprecated": false
+        },
+        {
+          "packId": "news-jp",
+          "siteId": "yahoo-it",
+          "name": "Yahoo!ニュース IT",
+          "rssUrl": "https://news.yahoo.co.jp/rss/topics/it.xml",
+          "category": "IT・科学",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "packId": "game-anime",
+      "name": "ゲーム・アニメ",
+      "description": "ゲーム・アニメ・マンガの最新ニュースパック",
+      "defaultEnabled": false,
+      "feeds": [
+        {
+          "packId": "game-anime",
+          "siteId": "4gamer",
+          "name": "4Gamer.net",
+          "rssUrl": "https://www.4gamer.net/rss/index.xml",
+          "category": "ゲーム",
+          "deprecated": false
+        },
+        {
+          "packId": "game-anime",
+          "siteId": "automaton",
+          "name": "AUTOMATON",
+          "rssUrl": "https://automaton-media.com/feed/",
+          "category": "ゲーム",
+          "deprecated": false
+        },
+        {
+          "packId": "game-anime",
+          "siteId": "denfami",
+          "name": "電ファミニコゲーマー",
+          "rssUrl": "https://news.denfaminicogamer.jp/feed",
+          "category": "ゲーム",
+          "deprecated": false
+        },
+        {
+          "packId": "game-anime",
+          "siteId": "animeanime",
+          "name": "アニメ！アニメ！",
+          "rssUrl": "https://animeanime.jp/rss20/index.rdf",
+          "category": "アニメ",
+          "deprecated": false
+        },
+        {
+          "packId": "game-anime",
+          "siteId": "natalie-comic",
+          "name": "コミックナタリー",
+          "rssUrl": "https://natalie.mu/comic/feed/news",
+          "category": "マンガ・アニメ",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "packId": "gadget-life",
+      "name": "ガジェット・暮らし",
+      "description": "スマホ・AV機器・ライフハックのトレンドパック",
+      "defaultEnabled": false,
+      "feeds": [
+        {
+          "packId": "gadget-life",
+          "siteId": "gizmodo-jp",
+          "name": "ギズモード・ジャパン",
+          "rssUrl": "https://www.gizmodo.jp/index.xml",
+          "category": "ガジェット",
+          "deprecated": false
+        },
+        {
+          "packId": "gadget-life",
+          "siteId": "technoedge",
+          "name": "TechnoEdge",
+          "rssUrl": "https://www.techno-edge.net/rss20/index.rdf",
+          "category": "ガジェット",
+          "deprecated": false
+        },
+        {
+          "packId": "gadget-life",
+          "siteId": "ktai-watch",
+          "name": "ケータイ Watch",
+          "rssUrl": "https://k-tai.watch.impress.co.jp/data/rss/1.0/ktw/feed.rdf",
+          "category": "スマホ・モバイル",
+          "deprecated": false
+        },
+        {
+          "packId": "gadget-life",
+          "siteId": "av-watch",
+          "name": "AV Watch",
+          "rssUrl": "https://av.watch.impress.co.jp/data/rss/1.0/avw/feed.rdf",
+          "category": "オーディオ・映像",
+          "deprecated": false
+        },
+        {
+          "packId": "gadget-life",
+          "siteId": "lifehacker-jp",
+          "name": "ライフハッカー・ジャパン",
+          "rssUrl": "https://www.lifehacker.jp/feed/index.xml",
+          "category": "ライフハック",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "packId": "global-tech",
+      "name": "海外Tech・AI",
+      "description": "海外のエンジニアリング・AI最新動向パック（英語）",
+      "defaultEnabled": false,
+      "feeds": [
+        {
+          "packId": "global-tech",
+          "siteId": "hackernews",
+          "name": "Hacker News",
+          "rssUrl": "https://hnrss.org/frontpage",
+          "category": "Engineering",
+          "deprecated": false
+        },
+        {
+          "packId": "global-tech",
+          "siteId": "techcrunch",
+          "name": "TechCrunch",
+          "rssUrl": "https://techcrunch.com/feed/",
+          "category": "Startups & AI",
+          "deprecated": false
+        },
+        {
+          "packId": "global-tech",
+          "siteId": "theverge",
+          "name": "The Verge",
+          "rssUrl": "https://www.theverge.com/rss/index.xml",
+          "category": "Tech",
+          "deprecated": false
+        },
+        {
+          "packId": "global-tech",
+          "siteId": "arstechnica",
+          "name": "Ars Technica",
+          "rssUrl": "https://feeds.arstechnica.com/arstechnica/index",
+          "category": "Tech",
+          "deprecated": false
+        },
+        {
+          "packId": "global-tech",
+          "siteId": "openai-blog",
+          "name": "OpenAI News",
+          "rssUrl": "https://openai.com/news/rss.xml",
+          "category": "AI",
+          "deprecated": false
+        },
+        {
+          "packId": "global-tech",
+          "siteId": "google-ai-blog",
+          "name": "Google DeepMind Blog",
+          "rssUrl": "https://deepmind.google/blog/rss.xml",
+          "category": "AI",
           "deprecated": false
         }
       ]

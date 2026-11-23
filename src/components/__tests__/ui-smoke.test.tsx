@@ -260,7 +260,7 @@ describe('MusubiReader UI smoke tests', () => {
     expect(textWithoutPrefetch).toContain('TypeScript 6.0の新機能まとめ');
     expect(textWithoutPrefetch).toContain('IT速報');
     expect(textWithoutPrefetch).toContain('10分前');
-    expect(textWithoutPrefetch).not.toContain('先読み済み');
+    expect(textWithoutPrefetch).not.toContain('ダウンロード済み');
 
     // Re-render with isPrefetched: true
     await act(async () => {
@@ -276,7 +276,7 @@ describe('MusubiReader UI smoke tests', () => {
     });
 
     const textWithPrefetch = extractAllText(root.container);
-    expect(textWithPrefetch).toContain('先読み済み');
+    expect(textWithPrefetch).toContain('ダウンロード済み');
 
     // One-tap bookmark toggle button works directly without opening menu
     const quickBookmarkBtn = findByTestId(

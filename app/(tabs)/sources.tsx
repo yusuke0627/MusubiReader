@@ -112,12 +112,12 @@ export default function SourcesScreen() {
       return '確認中';
     }
     if (networkState.type === 'WIFI' && networkState.isConnected !== false) {
-      return 'Wi-Fi接続中（先読み有効）';
+      return 'Wi-Fi接続中（ダウンロード有効）';
     }
     if (networkState.isConnected === false) {
       return 'オフライン';
     }
-    return 'モバイル通信中（Wi-Fi時のみ先読み）';
+    return 'モバイル通信中（Wi-Fi時のみダウンロード）';
   }, [networkState]);
 
   const handleAddCustomFeed = useCallback(async () => {
@@ -444,9 +444,9 @@ export default function SourcesScreen() {
         )}
       </View>
 
-      {/* Wi-Fi先読み・キャッシュ管理 */}
+      {/* Wi-Fiダウンロード・キャッシュ管理 */}
       <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
-        Wi-Fi先読み・キャッシュ管理
+        Wi-Fiダウンロード・キャッシュ管理
       </Text>
       <View
         style={[
@@ -459,7 +459,7 @@ export default function SourcesScreen() {
           通信状態: {wifiStatusLabel}
         </Text>
         <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-          先読みキャッシュ: {cacheEntries.length}件（合計{' '}
+          ダウンロード済みキャッシュ: {cacheEntries.length}件（合計{' '}
           {formatBytes(totalCacheBytes)}）
         </Text>
         <Text
@@ -475,7 +475,7 @@ export default function SourcesScreen() {
             { color: colors.textSecondary, marginTop: 8, fontWeight: '600' },
           ]}
         >
-          1回の先読み上限件数（現在: {prefetchBatchSize}件）
+          1回のダウンロード上限件数（現在: {prefetchBatchSize}件）
         </Text>
         <View style={styles.batchOptionRow}>
           {PREFETCH_BATCH_SIZE_OPTIONS.map((count) => {
@@ -514,7 +514,7 @@ export default function SourcesScreen() {
             直近の実行:{' '}
             {lastPrefetchResult.skippedNotWifi
               ? 'Wi-Fi未接続のためスキップ'
-              : `${lastPrefetchResult.prefetchedCount}件先読み / ${lastPrefetchResult.purgedCacheCount}件期限切れ削除`}
+              : `${lastPrefetchResult.prefetchedCount}件ダウンロード / ${lastPrefetchResult.purgedCacheCount}件期限切れ削除`}
           </Text>
         ) : null}
 
@@ -530,7 +530,7 @@ export default function SourcesScreen() {
             ]}
           >
             <Text style={styles.primaryBtnText}>
-              {isPrefetching ? '先読み中…' : '今すぐWi-Fi先読みを実行'}
+              {isPrefetching ? 'ダウンロード中…' : '今すぐWi-Fiダウンロード'}
             </Text>
           </Pressable>
 
@@ -559,7 +559,7 @@ export default function SourcesScreen() {
           ]}
         >
           <Text style={[styles.clearBtnText, { color: colors.accentText }]}>
-            先読み速度ベンチマークを計測する
+            ダウンロード速度ベンチマークを計測する
           </Text>
         </Pressable>
       </View>

@@ -424,7 +424,7 @@ export default function ArticleReaderScreen() {
                 { color: colors.badgeSuccessText },
               ]}
             >
-              先読みキャッシュで表示
+              ダウンロード済みキャッシュで表示
             </Text>
           </Pressable>
         </View>

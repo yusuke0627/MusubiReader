@@ -94,7 +94,7 @@ export function ArticleRow({
                 <Text
                   style={[styles.badgeText, { color: colors.badgeSuccessText }]}
                 >
-                  先読み済み
+                  ダウンロード済み
                 </Text>
               </View>
             ) : null}
