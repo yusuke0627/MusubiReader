@@ -74,25 +74,41 @@ function compareArticlesNewestFirst(a: Article, b: Article): number {
   return compareLexical(a.id, b.id);
 }
 
+export interface PrefetchCandidateOptions {
+  preferredPackId?: string;
+  preferredCategory?: string;
+}
+
 /**
- * Selects unread, uncached articles for Wi-Fi prefetching, prioritizing
- * keyword-matched articles ahead of articles in top-read categories.
+ * Selects unread, uncached articles for Wi-Fi prefetching, prioritizing:
+ * 1. Currently viewed pack/category (when explicitly requested from the UI),
+ * 2. Keyword-matched articles,
+ * 3. Articles in top-read categories,
+ * 4. Remaining unread articles newest-first as a fallback so newly enabled
+ *    packs without read history are still downloaded.
  */
 export function selectPrefetchCandidates(
   articles: Article[],
   topCategories: ReadonlySet<string>,
   matchedArticleIds: ReadonlySet<string>,
   cachedIds: ReadonlySet<string>,
-  maxBatch?: number
+  maxBatch?: number,
+  options?: PrefetchCandidateOptions
 ): Article[] {
   const batchLimit = maxBatch === undefined ? undefined : Math.floor(maxBatch);
   if (batchLimit !== undefined && !(batchLimit > 0)) {
     return [];
   }
 
+  const preferredPackId = options?.preferredPackId;
+  const preferredCategory = options?.preferredCategory;
+
   const seenIds = new Set<string>();
+  const preferredCategoryTier: Article[] = [];
+  const preferredPackTier: Article[] = [];
   const matchedTier: Article[] = [];
   const topCategoryTier: Article[] = [];
+  const fallbackTier: Article[] = [];
 
   for (const article of articles) {
     if (
@@ -104,17 +120,34 @@ export function selectPrefetchCandidates(
     }
     seenIds.add(article.id);
 
-    if (matchedArticleIds.has(article.id)) {
+    if (preferredPackId && article.packId === preferredPackId) {
+      if (preferredCategory && article.category === preferredCategory) {
+        preferredCategoryTier.push(article);
+      } else {
+        preferredPackTier.push(article);
+      }
+    } else if (matchedArticleIds.has(article.id)) {
       matchedTier.push(article);
     } else if (topCategories.has(article.category)) {
       topCategoryTier.push(article);
+    } else {
+      fallbackTier.push(article);
     }
   }
 
+  preferredCategoryTier.sort(compareArticlesNewestFirst);
+  preferredPackTier.sort(compareArticlesNewestFirst);
   matchedTier.sort(compareArticlesNewestFirst);
   topCategoryTier.sort(compareArticlesNewestFirst);
+  fallbackTier.sort(compareArticlesNewestFirst);
 
-  const prioritized = [...matchedTier, ...topCategoryTier];
+  const prioritized = [
+    ...preferredCategoryTier,
+    ...preferredPackTier,
+    ...matchedTier,
+    ...topCategoryTier,
+    ...fallbackTier,
+  ];
   return batchLimit === undefined
     ? prioritized
     : prioritized.slice(0, batchLimit);

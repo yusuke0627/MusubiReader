@@ -265,7 +265,15 @@ export default function HomeScreen() {
           testID="home-prefetch-button"
           accessibilityRole="button"
           disabled={isSyncing || isPrefetching}
-          onPress={() => void syncAndPrefetchNow()}
+          onPress={() =>
+            void syncAndPrefetchNow({
+              preferredPackId: selectedPackId,
+              preferredCategory:
+                selectedCategory === ALL_CATEGORIES
+                  ? undefined
+                  : selectedCategory,
+            })
+          }
           style={[
             styles.prefetchBtn,
             {

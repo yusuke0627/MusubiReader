@@ -1,5 +1,6 @@
 import iconv from 'iconv-lite';
 import type { ArticleRepository } from '../data/repositories/article-repository';
+import type { CatalogRepository } from '../data/repositories/catalog-repository';
 import type { SettingsRepository } from '../data/repositories/settings-repository';
 import {
   detectBomOrHeaderCharset,
@@ -72,6 +73,7 @@ export interface PrefetchServiceDeps {
     SettingsRepository,
     'listInterestKeywords' | 'listNgWords' | 'listFeedOverrides' | 'listCustomFeeds'
   >;
+  catalogRepo?: Pick<CatalogRepository, 'getResolvedFeeds'>;
   networkState?: NetworkStateProvider;
   fileStore?: PrefetchFileStore;
   fetcher?: typeof fetch;
@@ -80,6 +82,8 @@ export interface PrefetchServiceDeps {
   maxImagesPerArticle?: number;
   concurrency?: number;
   timeoutMs?: number;
+  preferredPackId?: string;
+  preferredCategory?: string;
 }
 
 export interface WifiPrefetchAndPurgeResult {
@@ -691,6 +695,7 @@ export async function runWifiPrefetchAndPurge(
     ngWords,
     overrides,
     customFeeds,
+    resolvedFeeds,
   ] = await Promise.all([
     deps.articleRepo.listAllArticles(),
     deps.articleRepo.listCacheEntries(),
@@ -699,6 +704,7 @@ export async function runWifiPrefetchAndPurge(
     deps.settingsRepo.listNgWords(),
     deps.settingsRepo.listFeedOverrides(),
     deps.settingsRepo.listCustomFeeds(),
+    deps.catalogRepo ? deps.catalogRepo.getResolvedFeeds() : Promise.resolve(null),
   ]);
 
   const mutedSiteIds = new Set<string>();
@@ -713,8 +719,18 @@ export async function runWifiPrefetchAndPurge(
     }
   }
 
+  const enabledSiteIds = resolvedFeeds
+    ? new Set(
+        resolvedFeeds
+          .filter((feed) => feed.enabled && !feed.muted)
+          .map((feed) => feed.siteId)
+      )
+    : null;
+
   const unblockedArticles = remainingArticles.filter(
-    (article) => !isArticleBlocked(article, ngWords, mutedSiteIds)
+    (article) =>
+      (!enabledSiteIds || enabledSiteIds.has(article.siteId)) &&
+      !isArticleBlocked(article, ngWords, mutedSiteIds)
   );
   const pickupMatched = curatePickupArticles(
     unblockedArticles,
@@ -735,7 +751,11 @@ export async function runWifiPrefetchAndPurge(
     topCategories,
     matchedArticleIds,
     cachedIds,
-    maxBatch
+    maxBatch,
+    {
+      preferredPackId: deps.preferredPackId,
+      preferredCategory: deps.preferredCategory,
+    }
   );
 
   const downloaded = await mapWithConcurrency(
