@@ -1209,4 +1209,179 @@ describe('MusubiReader UI smoke tests', () => {
     await flushEffects();
     close();
   });
+
+  test('HomeScreen toggles downloaded-only filter manually on Wi-Fi and resets from empty state', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const catalogRepo = new CatalogRepository(db);
+    const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+    await catalogRepo.getEffectiveCatalog();
+
+    await articleRepo.upsertArticles([
+      makeSampleArticle({
+        id: 'dl-art-1',
+        packId: 'matome-5ch',
+        title: 'キャッシュ済みの記事タイトル',
+      }),
+      makeSampleArticle({
+        id: 'dl-art-2',
+        packId: 'matome-5ch',
+        title: '未ダウンロードの記事タイトル',
+      }),
+    ]);
+    await articleRepo.upsertCacheEntry({
+      articleId: 'dl-art-1',
+      localPath: '/cache/musubi-prefetch/dl-art-1/index.html',
+      sizeBytes: 1024,
+      cachedAt: 1000,
+      lastAccessedAt: 1000,
+    });
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo,
+      settingsRepo,
+      getNetworkStateFn: async () => ({ type: 'WIFI', isConnected: true }),
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn: async () => ({
+        skippedNotWifi: false,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    // On Wi-Fi, filter is OFF by default -> both articles visible
+    let text = extractAllText(root.container);
+    expect(text).toContain('キャッシュ済みの記事タイトル');
+    expect(text).toContain('未ダウンロードの記事タイトル');
+
+    // Toggle downloaded-only filter ON
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'home-downloaded-filter-button'));
+    });
+    text = extractAllText(root.container);
+    expect(text).toContain('キャッシュ済みの記事タイトル');
+    expect(text).not.toContain('未ダウンロードの記事タイトル');
+
+    // Toggle downloaded-only filter OFF
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'home-downloaded-filter-button'));
+    });
+    text = extractAllText(root.container);
+    expect(text).toContain('キャッシュ済みの記事タイトル');
+    expect(text).toContain('未ダウンロードの記事タイトル');
+
+    await act(async () => {
+      root.unmount();
+    });
+    await flushEffects();
+    close();
+  });
+
+  test('HomeScreen auto-enables downloaded-only filter on cellular when cached articles exist', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const catalogRepo = new CatalogRepository(db);
+    const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+    await catalogRepo.getEffectiveCatalog();
+
+    await articleRepo.upsertArticles([
+      makeSampleArticle({
+        id: 'cell-art-1',
+        packId: 'matome-5ch',
+        title: '携帯回線ですぐ読める記事',
+      }),
+      makeSampleArticle({
+        id: 'cell-art-2',
+        packId: 'matome-5ch',
+        title: '携帯回線では隠れる未DL記事',
+      }),
+    ]);
+    await articleRepo.upsertCacheEntry({
+      articleId: 'cell-art-1',
+      localPath: '/cache/musubi-prefetch/cell-art-1/index.html',
+      sizeBytes: 1024,
+      cachedAt: 1000,
+      lastAccessedAt: 1000,
+    });
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo,
+      settingsRepo,
+      getNetworkStateFn: async () => ({ type: 'CELLULAR', isConnected: true }),
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn: async () => ({
+        skippedNotWifi: true,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    // Auto-enabled on cellular: only downloaded article shown + banner visible
+    let text = extractAllText(root.container);
+    expect(text).toContain('携帯回線ですぐ読める記事');
+    expect(text).not.toContain('携帯回線では隠れる未DL記事');
+    expect(
+      findByTestId(root.container, 'home-cellular-filter-banner')
+    ).toBeDefined();
+
+    // User can manually turn off the filter to see all articles
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'home-downloaded-filter-button'));
+    });
+    text = extractAllText(root.container);
+    expect(text).toContain('携帯回線ですぐ読める記事');
+    expect(text).toContain('携帯回線では隠れる未DL記事');
+
+    await act(async () => {
+      root.unmount();
+    });
+    await flushEffects();
+    close();
+  });
 });

@@ -1,5 +1,5 @@
 import { type Href, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -68,6 +68,74 @@ export default function HomeScreen() {
     useState<string>(ALL_CATEGORIES);
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoadingArticles, setIsLoadingArticles] = useState(false);
+  const [downloadedOnly, setDownloadedOnly] = useState(false);
+  const manualFilterOverrideRef = useRef<boolean | null>(null);
+  const lastNetworkTypeRef = useRef<string | undefined>(undefined);
+
+  const cachedIdSet = useMemo(
+    () => new Set(cacheEntries.map((entry) => entry.articleId)),
+    [cacheEntries]
+  );
+
+  const isNonWifi = Boolean(networkState) && networkState?.type !== 'WIFI';
+
+  // Auto-enable downloaded-only filter on cellular/offline when cached articles exist,
+  // while respecting explicit user toggles until the network type actually changes.
+  useEffect(() => {
+    const currentType = networkState?.type;
+    if (!currentType) {
+      return;
+    }
+    if (
+      lastNetworkTypeRef.current !== undefined &&
+      lastNetworkTypeRef.current !== currentType
+    ) {
+      manualFilterOverrideRef.current = null;
+    }
+    lastNetworkTypeRef.current = currentType;
+
+    if (manualFilterOverrideRef.current !== null) {
+      return;
+    }
+
+    if (currentType !== 'WIFI' && cacheEntries.length > 0) {
+      setDownloadedOnly(true);
+    } else if (currentType === 'WIFI') {
+      setDownloadedOnly(false);
+    }
+  }, [networkState?.type, cacheEntries.length]);
+
+  const downloadedInTabCount = useMemo(
+    () =>
+      articles.filter(
+        (article) => Boolean(article.isPrefetched) || cachedIdSet.has(article.id)
+      ).length,
+    [articles, cachedIdSet]
+  );
+
+  const displayedArticles = useMemo(
+    () =>
+      downloadedOnly
+        ? articles.filter(
+            (article) =>
+              Boolean(article.isPrefetched) || cachedIdSet.has(article.id)
+          )
+        : articles,
+    [articles, downloadedOnly, cachedIdSet]
+  );
+
+  const handleToggleDownloadedOnly = useCallback(() => {
+    setDownloadedOnly((prev) => {
+      const next = !prev;
+      manualFilterOverrideRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const handleShowAllArticles = useCallback(() => {
+    manualFilterOverrideRef.current = false;
+    setDownloadedOnly(false);
+  }, []);
 
   // Keep selectedPackId valid once initial catalog data is ready.
   useEffect(() => {
@@ -204,6 +272,27 @@ export default function HomeScreen() {
       );
     }
 
+    if (downloadedOnly && articles.length > 0 && displayedArticles.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>
+            このタブにダウンロード済み記事がありません
+          </Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            Wi-Fi接続時に「Wi-Fiダウンロード」を実行するか、すべての記事を表示してください。
+          </Text>
+          <Pressable
+            testID="home-show-all-articles-button"
+            accessibilityRole="button"
+            onPress={handleShowAllArticles}
+            style={[styles.refreshBtn, { backgroundColor: colors.accent }]}
+          >
+            <Text style={styles.refreshBtnText}>すべて表示に戻す</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <Text style={[styles.emptyTitle, { color: colors.text }]}>
@@ -245,22 +334,40 @@ export default function HomeScreen() {
           { backgroundColor: colors.surface, borderBottomColor: colors.border },
         ]}
       >
-        <View style={styles.prefetchStatus}>
+        <Pressable
+          testID="home-downloaded-filter-button"
+          accessibilityRole="button"
+          accessibilityState={{ selected: downloadedOnly }}
+          onPress={handleToggleDownloadedOnly}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor: downloadedOnly
+                ? colors.badgeSuccessBg
+                : colors.surfaceSecondary,
+              borderColor: downloadedOnly
+                ? colors.badgeSuccessText
+                : colors.border,
+            },
+          ]}
+        >
           <Text
             numberOfLines={1}
-            style={[styles.prefetchStatusText, { color: colors.textSecondary }]}
+            ellipsizeMode="tail"
+            style={[
+              styles.filterChipText,
+              {
+                color: downloadedOnly
+                  ? colors.badgeSuccessText
+                  : colors.textSecondary,
+              },
+            ]}
           >
-            {isSyncing
-              ? '最新記事を取得中…'
-              : isPrefetching
-                ? `Wi-Fiダウンロード中（最大${prefetchBatchSize}件）…`
-                : lastPrefetchResult?.skippedNotWifi
-                  ? 'Wi-Fi未接続のためダウンロード待機中'
-                  : `ダウンロード済み ${cacheEntries.length}件${
-                      networkState?.type === 'WIFI' ? '・Wi-Fi接続中' : ''
-                    }`}
+            {downloadedOnly
+              ? `✓ ダウンロード済みのみ (${downloadedInTabCount})`
+              : `ダウンロード済みのみ (${downloadedInTabCount})`}
           </Text>
-        </View>
+        </Pressable>
         <Pressable
           testID="home-prefetch-button"
           accessibilityRole="button"
@@ -282,19 +389,60 @@ export default function HomeScreen() {
             },
           ]}
         >
-          <Text style={styles.prefetchBtnText}>
-            {isSyncing || isPrefetching
-              ? '実行中…'
-              : `Wi-Fiダウンロード (${prefetchBatchSize}件)`}
+          <Text numberOfLines={1} style={styles.prefetchBtnText}>
+            {isSyncing
+              ? '取得中…'
+              : isPrefetching
+                ? 'DL中…'
+                : `Wi-Fi DL (${prefetchBatchSize}件)`}
           </Text>
         </Pressable>
       </View>
 
+      {isNonWifi && downloadedOnly ? (
+        <View
+          testID="home-cellular-filter-banner"
+          style={[
+            styles.noticeBanner,
+            {
+              backgroundColor: colors.badgeSuccessBg,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[styles.noticeBannerText, { color: colors.badgeSuccessText }]}
+          >
+            携帯回線中のためダウンロード済み記事を表示中（全{cacheEntries.length}件）
+          </Text>
+        </View>
+      ) : lastPrefetchResult?.skippedNotWifi ? (
+        <View
+          style={[
+            styles.noticeBanner,
+            {
+              backgroundColor: colors.surfaceSecondary,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[styles.noticeBannerText, { color: colors.textSecondary }]}
+          >
+            Wi-Fi未接続のためダウンロード待機中
+          </Text>
+        </View>
+      ) : null}
+
       <FlatList
-        data={articles}
+        data={displayedArticles}
         keyExtractor={(item) => item.id}
         contentContainerStyle={
-          articles.length === 0 ? styles.emptyListContent : styles.listContent
+          displayedArticles.length === 0
+            ? styles.emptyListContent
+            : styles.listContent
         }
         refreshControl={
           <RefreshControl
@@ -325,19 +473,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: 8,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  prefetchStatus: {
-    flex: 1,
+  filterChip: {
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  prefetchStatusText: {
+  filterChipText: {
     fontSize: 12,
     fontWeight: '600',
   },
   prefetchBtn: {
+    flexShrink: 0,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -346,6 +499,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  noticeBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+  },
+  noticeBannerText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   listContent: {
     paddingVertical: 8,
