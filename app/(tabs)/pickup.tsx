@@ -27,7 +27,6 @@ export default function PickupScreen() {
     isReady,
     initError,
     interestKeywords,
-    isSyncing,
     dataVersion,
     syncNow,
     listPickupArticles,
@@ -39,6 +38,16 @@ export default function PickupScreen() {
 
   const [keywordDraft, setKeywordDraft] = useState('');
   const [items, setItems] = useState<PickupDisplayItem[]>([]);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+
+  const handlePullRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+    try {
+      await syncNow();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [syncNow]);
 
   const loadRequestIdRef = React.useRef(0);
 
@@ -190,8 +199,8 @@ export default function PickupScreen() {
         }
         refreshControl={
           <RefreshControl
-            refreshing={isSyncing}
-            onRefresh={() => void syncNow()}
+            refreshing={isPullRefreshing}
+            onRefresh={() => void handlePullRefresh()}
             tintColor={colors.accent}
           />
         }

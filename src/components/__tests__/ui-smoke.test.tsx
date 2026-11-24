@@ -1384,4 +1384,83 @@ describe('MusubiReader UI smoke tests', () => {
     await flushEffects();
     close();
   });
+
+  test('HomeScreen does not pull down RefreshControl during startup auto-sync, only on manual pull-to-refresh', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const catalogRepo = new CatalogRepository(db);
+    const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+    await catalogRepo.getEffectiveCatalog();
+    await articleRepo.upsertArticles([
+      makeSampleArticle({
+        id: 'startup-art-1',
+        packId: 'matome-5ch',
+        title: '起動直後にすぐ読める記事',
+      }),
+    ]);
+
+    let resolveSync: (() => void) | null = null;
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo,
+      settingsRepo,
+      getNetworkStateFn: async () => ({ type: 'WIFI', isConnected: true }),
+      syncFn: () =>
+        new Promise((resolve) => {
+          resolveSync = () =>
+            resolve({
+              fetchedFeeds: 1,
+              failedFeeds: 0,
+              newArticles: 0,
+              newKeywordMatches: [],
+            });
+        }),
+      prefetchFn: async () => ({
+        skippedNotWifi: false,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+
+    try {
+      // Background startup sync is in flight: button shows 取得中…, but RefreshControl is NOT refreshing
+      expect(
+        extractAllText(findByTestId(root.container, 'home-prefetch-button'))
+      ).toContain('取得中…');
+      const scrollHosts = root.container.queryAll(
+        (node) => Boolean(node.props?.refreshControl)
+      );
+      expect(scrollHosts.length).toBeGreaterThanOrEqual(1);
+      const rcElement = scrollHosts[0].props.refreshControl as {
+        props: { refreshing: boolean; onRefresh: () => void };
+      };
+      expect(rcElement.props.refreshing).toBe(false);
+    } finally {
+      await act(async () => {
+        resolveSync?.();
+      });
+      await flushEffects();
+      await act(async () => {
+        root.unmount();
+      });
+      await flushEffects();
+      close();
+    }
+  });
 });

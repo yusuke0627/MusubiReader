@@ -68,6 +68,7 @@ export default function HomeScreen() {
     useState<string>(ALL_CATEGORIES);
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoadingArticles, setIsLoadingArticles] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
   const manualFilterOverrideRef = useRef<boolean | null>(null);
   const lastNetworkTypeRef = useRef<string | undefined>(undefined);
@@ -136,6 +137,15 @@ export default function HomeScreen() {
     manualFilterOverrideRef.current = false;
     setDownloadedOnly(false);
   }, []);
+
+  const handlePullRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+    try {
+      await syncNow();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [syncNow]);
 
   // Keep selectedPackId valid once initial catalog data is ready.
   useEffect(() => {
@@ -389,6 +399,9 @@ export default function HomeScreen() {
             },
           ]}
         >
+          {isSyncing || isPrefetching ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : null}
           <Text numberOfLines={1} style={styles.prefetchBtnText}>
             {isSyncing
               ? '取得中…'
@@ -446,8 +459,8 @@ export default function HomeScreen() {
         }
         refreshControl={
           <RefreshControl
-            refreshing={isSyncing}
-            onRefresh={() => void syncNow()}
+            refreshing={isPullRefreshing}
+            onRefresh={() => void handlePullRefresh()}
             tintColor={colors.accent}
           />
         }
@@ -491,6 +504,9 @@ const styles = StyleSheet.create({
   },
   prefetchBtn: {
     flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
