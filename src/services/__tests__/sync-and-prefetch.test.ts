@@ -34,9 +34,13 @@ import {
 import {
   configureNotificationHandler,
   ensureNotificationPermissions,
+  PICKUP_NOTIFICATION_ROUTE,
+  resolveNotificationRoute,
+  subscribeNotificationNavigation,
   syncAllFeeds,
   type LocalNotifier,
   type NotificationPayload,
+  type NotificationResponseLike,
 } from '../sync-service';
 
 interface NodeSqliteStatement {
@@ -1461,5 +1465,76 @@ describe('notifications setup and permission helpers', () => {
     } finally {
       raw.close();
     }
+  });
+});
+
+describe('notification tap navigation', () => {
+  test('resolveNotificationRoute routes explicit route and legacy keyword payloads to pickup tab', () => {
+    expect(
+      resolveNotificationRoute({ route: PICKUP_NOTIFICATION_ROUTE })
+    ).toBe('/(tabs)/pickup');
+    expect(
+      resolveNotificationRoute({ articleIds: ['art-1'], matchedKeywords: ['Rust'] })
+    ).toBe('/(tabs)/pickup');
+    expect(resolveNotificationRoute({})).toBeNull();
+    expect(resolveNotificationRoute(undefined)).toBeNull();
+  });
+
+  test('subscribeNotificationNavigation handles cold-start and runtime taps and deduplicates by identifier', async () => {
+    const navigated: string[] = [];
+    const listenerRef: {
+      current: ((response: NotificationResponseLike) => void) | null;
+    } = { current: null };
+    const remove = jest.fn();
+
+    const coldStartResponse: NotificationResponseLike = {
+      notification: {
+        request: {
+          identifier: 'notif-1',
+          content: {
+            data: { route: PICKUP_NOTIFICATION_ROUTE, articleIds: ['a1'] },
+          },
+        },
+      },
+    };
+
+    const unsubscribe = subscribeNotificationNavigation(
+      (route) => {
+        navigated.push(route);
+      },
+      {
+        async getLastNotificationResponseAsync() {
+          return coldStartResponse;
+        },
+        addNotificationResponseReceivedListener(cb) {
+          listenerRef.current = cb;
+          return { remove };
+        },
+      }
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(navigated).toEqual(['/(tabs)/pickup']);
+
+    // Same notification identifier fired again should be ignored
+    listenerRef.current?.(coldStartResponse);
+    expect(navigated).toEqual(['/(tabs)/pickup']);
+
+    // New notification tap navigates again
+    listenerRef.current?.({
+      notification: {
+        request: {
+          identifier: 'notif-2',
+          content: {
+            data: { matchedKeywords: ['TypeScript'] },
+          },
+        },
+      },
+    });
+    expect(navigated).toEqual(['/(tabs)/pickup', '/(tabs)/pickup']);
+
+    unsubscribe();
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 });

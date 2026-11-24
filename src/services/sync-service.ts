@@ -71,6 +71,19 @@ export interface NotificationPermissionsLike {
   };
 }
 
+export const PICKUP_NOTIFICATION_ROUTE = '/(tabs)/pickup' as const;
+
+export interface NotificationResponseLike {
+  notification?: {
+    request?: {
+      identifier?: string;
+      content?: {
+        data?: Record<string, unknown>;
+      };
+    };
+  };
+}
+
 export interface NotificationsModuleLike {
   IosAuthorizationStatus?: {
     PROVISIONAL?: number;
@@ -91,6 +104,10 @@ export interface NotificationsModuleLike {
       allowSound?: boolean;
     };
   }) => Promise<NotificationPermissionsLike>;
+  getLastNotificationResponseAsync?: () => Promise<NotificationResponseLike | null>;
+  addNotificationResponseReceivedListener?: (
+    listener: (response: NotificationResponseLike) => void
+  ) => { remove: () => void };
 }
 
 let defaultNotificationHandlerConfigured = false;
@@ -179,6 +196,85 @@ export async function ensureNotificationPermissions(
 }
 
 /**
+ * Resolves the target route when a user taps a local keyword-match notification.
+ * Supports both explicit `route` and legacy `articleIds` / `matchedKeywords` payloads.
+ */
+export function resolveNotificationRoute(
+  data: Record<string, unknown> | undefined
+): typeof PICKUP_NOTIFICATION_ROUTE | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  if (data.route === PICKUP_NOTIFICATION_ROUTE) {
+    return PICKUP_NOTIFICATION_ROUTE;
+  }
+  if (Array.isArray(data.articleIds) || Array.isArray(data.matchedKeywords)) {
+    return PICKUP_NOTIFICATION_ROUTE;
+  }
+  return null;
+}
+
+/**
+ * Subscribes to notification taps (both cold-start via `getLastNotificationResponseAsync`
+ * and foreground/background via `addNotificationResponseReceivedListener`) and invokes
+ * `onNavigate` once per notification identifier.
+ */
+export function subscribeNotificationNavigation(
+  onNavigate: (route: typeof PICKUP_NOTIFICATION_ROUTE) => void,
+  notificationsApi?: Partial<NotificationsModuleLike>
+): () => void {
+  let active = true;
+  let subscription: { remove: () => void } | null = null;
+  const handledIds = new Set<string>();
+
+  const handleResponse = (response: NotificationResponseLike | null | undefined) => {
+    if (!active || !response) {
+      return;
+    }
+    const identifier = response.notification?.request?.identifier;
+    if (identifier) {
+      if (handledIds.has(identifier)) {
+        return;
+      }
+      handledIds.add(identifier);
+    }
+    const route = resolveNotificationRoute(
+      response.notification?.request?.content?.data
+    );
+    if (route) {
+      onNavigate(route);
+    }
+  };
+
+  void (async () => {
+    try {
+      const Notifications: Partial<NotificationsModuleLike> =
+        notificationsApi ?? (await import('expo-notifications'));
+      if (!active) {
+        return;
+      }
+      if (typeof Notifications.addNotificationResponseReceivedListener === 'function') {
+        subscription = Notifications.addNotificationResponseReceivedListener(
+          handleResponse
+        );
+      }
+      if (typeof Notifications.getLastNotificationResponseAsync === 'function') {
+        const lastResponse = await Notifications.getLastNotificationResponseAsync();
+        handleResponse(lastResponse);
+      }
+    } catch {
+      // Ignore on unsupported runtimes (e.g. web/tests without native notifications).
+    }
+  })();
+
+  return () => {
+    active = false;
+    subscription?.remove?.();
+    subscription = null;
+  };
+}
+
+/**
  * Default Expo runtime local notification sender using `expo-notifications`.
  */
 export function createExpoNotifier(): LocalNotifier {
@@ -243,6 +339,7 @@ function buildNotificationPayload(
       title: `ピックアップ新着: ${matchedKeywords.join(', ')}`,
       body: `${article.title} (${article.siteName})`,
       data: {
+        route: PICKUP_NOTIFICATION_ROUTE,
         articleIds: [article.id],
         url: article.url,
         matchedKeywords,
@@ -257,6 +354,7 @@ function buildNotificationPayload(
     title: `興味ワードに${curatedMatches.length}件の新着記事`,
     body: `「${curatedMatches[0].article.title}」ほか`,
     data: {
+      route: PICKUP_NOTIFICATION_ROUTE,
       articleIds: curatedMatches.map((entry) => entry.article.id),
       matchedKeywords: allKeywords,
     },
