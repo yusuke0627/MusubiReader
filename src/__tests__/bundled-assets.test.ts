@@ -95,3 +95,32 @@ test('GitHub Pages site includes index, privacy policy, and support pages', () =
   expect(privacyHtml).toContain('Privacy Policy');
   expect(supportHtml).toContain('サポート・お問い合わせ');
 });
+
+test('strip-push-entitlement config plugin removes aps-environment while preserving other keys', async () => {
+  const stripPushEntitlement = require('../../plugins/strip-push-entitlement') as (
+    config: Record<string, unknown>
+  ) => {
+    mods?: {
+      ios?: {
+        entitlements?: (modConfig: {
+          modResults: Record<string, unknown>;
+        }) => Promise<{ modResults: Record<string, unknown> }>;
+      };
+    };
+  };
+
+  const result = stripPushEntitlement({ name: 'MusubiReader', slug: 'musubireader' });
+  const mod = result.mods?.ios?.entitlements;
+  expect(typeof mod).toBe('function');
+
+  const updated = await mod!({
+    modResults: {
+      'aps-environment': 'development',
+      'com.apple.security.application-groups': ['group.example'],
+    },
+  });
+  expect(updated.modResults['aps-environment']).toBeUndefined();
+  expect(updated.modResults['com.apple.security.application-groups']).toEqual([
+    'group.example',
+  ]);
+});
