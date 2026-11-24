@@ -1463,4 +1463,82 @@ describe('MusubiReader UI smoke tests', () => {
       close();
     }
   });
+
+  test('HomeScreen changes Wi-Fi download count via bottom sheet without auto-starting download', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const catalogRepo = new CatalogRepository(db);
+    const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+    await catalogRepo.getEffectiveCatalog();
+
+    const prefetchFn = jest.fn(async () => ({
+      skippedNotWifi: false,
+      prefetchedCount: 0,
+      purgedCacheCount: 0,
+      purgedMetadataCount: 0,
+    }));
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo,
+      settingsRepo,
+      getNetworkStateFn: async () => ({ type: 'WIFI', isConnected: true }),
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn,
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <HomeScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const callsAfterStartup = prefetchFn.mock.calls.length;
+    expect(
+      extractAllText(findByTestId(root.container, 'home-prefetch-button'))
+    ).toContain('Wi-Fi DL (20件)');
+
+    // Open bottom sheet via chevron button
+    await act(async () => {
+      pressNode(
+        findByTestId(root.container, 'home-prefetch-count-picker-button')
+      );
+    });
+    expect(
+      findByTestId(root.container, 'home-prefetch-count-sheet')
+    ).toBeDefined();
+
+    // Pick 100件 -> updates count, persists to DB, does NOT auto-run prefetchFn
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'home-prefetch-count-option-100'));
+    });
+    await flushEffects();
+
+    expect(await settingsRepo.getPrefetchBatchSize()).toBe(100);
+    expect(
+      extractAllText(findByTestId(root.container, 'home-prefetch-button'))
+    ).toContain('Wi-Fi DL (100件)');
+    expect(prefetchFn).toHaveBeenCalledTimes(callsAfterStartup);
+
+    await act(async () => {
+      root.unmount();
+    });
+    await flushEffects();
+    close();
+  });
 });
