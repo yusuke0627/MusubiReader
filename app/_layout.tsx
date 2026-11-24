@@ -1,11 +1,21 @@
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  type Href,
+  Stack,
+  ThemeProvider,
+  useRouter,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { configureNotificationHandler } from '../src/services/sync-service';
+import {
+  configureNotificationHandler,
+  subscribeNotificationNavigation,
+} from '../src/services/sync-service';
 import { AppDataProvider } from '../src/state/app-context';
 
 export {
@@ -52,6 +62,13 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+
+  useEffect(() => {
+    return subscribeNotificationNavigation((route) => {
+      router.navigate(route as Href);
+    });
+  }, [router]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
