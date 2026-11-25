@@ -1401,14 +1401,16 @@ describe('MusubiReader UI smoke tests', () => {
     ]);
 
     let resolveSync: (() => void) | null = null;
+    let capturedSignal: AbortSignal | undefined;
     const runtime: AppRuntimeOverrides = {
       db,
       catalogRepo,
       articleRepo,
       settingsRepo,
       getNetworkStateFn: async () => ({ type: 'WIFI', isConnected: true }),
-      syncFn: () =>
-        new Promise((resolve) => {
+      syncFn: (signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return new Promise((resolve) => {
           resolveSync = () =>
             resolve({
               fetchedFeeds: 1,
@@ -1416,7 +1418,8 @@ describe('MusubiReader UI smoke tests', () => {
               newArticles: 0,
               newKeywordMatches: [],
             });
-        }),
+        });
+      },
       prefetchFn: async () => ({
         skippedNotWifi: false,
         prefetchedCount: 0,
@@ -1439,9 +1442,11 @@ describe('MusubiReader UI smoke tests', () => {
     await flushEffects();
 
     try {
-      // Background startup sync is in flight: button shows 取得中…, but RefreshControl is NOT refreshing
+      // Background startup sync is in flight: cancel button shows 取得中… ✕, and RefreshControl is NOT refreshing
       expect(
-        extractAllText(findByTestId(root.container, 'home-prefetch-button'))
+        extractAllText(
+          findByTestId(root.container, 'home-prefetch-cancel-button')
+        )
       ).toContain('取得中…');
       const scrollHosts = root.container.queryAll(
         (node) => Boolean(node.props?.refreshControl)
@@ -1451,6 +1456,16 @@ describe('MusubiReader UI smoke tests', () => {
         props: { refreshing: boolean; onRefresh: () => void };
       };
       expect(rcElement.props.refreshing).toBe(false);
+
+      // Tapping cancel aborts the in-flight signal and restores the Wi-Fi DL split button immediately
+      expect(capturedSignal?.aborted).toBe(false);
+      await act(async () => {
+        pressNode(findByTestId(root.container, 'home-prefetch-cancel-button'));
+      });
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(
+        extractAllText(findByTestId(root.container, 'home-prefetch-button'))
+      ).toContain('Wi-Fi DL');
     } finally {
       await act(async () => {
         resolveSync?.();

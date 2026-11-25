@@ -84,6 +84,7 @@ export interface PrefetchServiceDeps {
   timeoutMs?: number;
   preferredPackId?: string;
   preferredCategory?: string;
+  signal?: AbortSignal;
 }
 
 export interface WifiPrefetchAndPurgeResult {
@@ -551,13 +552,21 @@ async function prefetchSingleArticle(
   fetcher: typeof fetch,
   timeoutMs: number,
   maxImages: number,
-  nowMs: number
+  nowMs: number,
+  signal?: AbortSignal
 ): Promise<{ articleId: string; localPath: string; sizeBytes: number } | null> {
+  if (signal?.aborted) {
+    return null;
+  }
   try {
-    const htmlRes = await fetchWithTimeout(article.url, fetcher, timeoutMs, {
-      headers: MOBILE_HTML_HEADERS,
-    });
-    if (!htmlRes.ok) {
+    const htmlRes = await fetchWithTimeout(
+      article.url,
+      fetcher,
+      timeoutMs,
+      { headers: MOBILE_HTML_HEADERS },
+      signal
+    );
+    if (!htmlRes.ok || signal?.aborted) {
       return null;
     }
 
@@ -585,10 +594,17 @@ async function prefetchSingleArticle(
     const localFilesByUrl = new Map<string, string>();
 
     for (const cssUrl of stylesheetUrls) {
+      if (signal?.aborted) {
+        return null;
+      }
       try {
-        const cssRes = await fetchWithTimeout(cssUrl, fetcher, timeoutMs, {
-          headers: MOBILE_ASSET_HEADERS,
-        });
+        const cssRes = await fetchWithTimeout(
+          cssUrl,
+          fetcher,
+          timeoutMs,
+          { headers: MOBILE_ASSET_HEADERS },
+          signal
+        );
         if (!cssRes.ok) {
           continue;
         }
@@ -606,11 +622,18 @@ async function prefetchSingleArticle(
     }
 
     for (let i = 0; i < imageUrls.length; i += 1) {
+      if (signal?.aborted) {
+        return null;
+      }
       const imageUrl = imageUrls[i];
       try {
-        const imgRes = await fetchWithTimeout(imageUrl, fetcher, timeoutMs, {
-          headers: MOBILE_ASSET_HEADERS,
-        });
+        const imgRes = await fetchWithTimeout(
+          imageUrl,
+          fetcher,
+          timeoutMs,
+          { headers: MOBILE_ASSET_HEADERS },
+          signal
+        );
         if (!imgRes.ok) {
           continue;
         }
@@ -768,8 +791,10 @@ export async function runWifiPrefetchAndPurge(
         fetcher,
         timeoutMs,
         maxImages,
-        nowMs
-      )
+        nowMs,
+        deps.signal
+      ),
+    deps.signal
   );
 
   let prefetchedCount = 0;

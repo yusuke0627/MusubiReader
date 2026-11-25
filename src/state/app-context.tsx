@@ -57,9 +57,9 @@ export interface AppRuntimeOverrides {
   catalogRepo?: CatalogRepository;
   articleRepo?: ArticleRepository;
   settingsRepo?: SettingsRepository;
-  syncFn?: () => Promise<SyncAllFeedsResult>;
+  syncFn?: (signal?: AbortSignal) => Promise<SyncAllFeedsResult>;
   prefetchFn?: (
-    options?: PrefetchCandidateOptions
+    options?: PrefetchCandidateOptions & { signal?: AbortSignal }
   ) => Promise<WifiPrefetchAndPurgeResult>;
   registerBackgroundFn?: () => Promise<void>;
   configureNotificationsFn?: () => Promise<void>;
@@ -79,9 +79,9 @@ interface ResolvedRuntime {
   catalogRepo: CatalogRepository;
   articleRepo: ArticleRepository;
   settingsRepo: SettingsRepository;
-  syncFn: () => Promise<SyncAllFeedsResult>;
+  syncFn: (signal?: AbortSignal) => Promise<SyncAllFeedsResult>;
   prefetchFn: (
-    options?: PrefetchCandidateOptions
+    options?: PrefetchCandidateOptions & { signal?: AbortSignal }
   ) => Promise<WifiPrefetchAndPurgeResult>;
   registerBackgroundFn: () => Promise<void>;
   configureNotificationsFn: () => Promise<void>;
@@ -121,6 +121,7 @@ export interface AppDataContextValue {
   syncAndPrefetchNow: (
     options?: PrefetchCandidateOptions
   ) => Promise<WifiPrefetchAndPurgeResult | null>;
+  cancelSyncAndPrefetch: () => void;
   setPrefetchBatchSize: (count: number) => Promise<void>;
   recordBlockedAds: (delta: number) => Promise<void>;
   clearPrefetchCache: () => Promise<void>;
@@ -197,10 +198,11 @@ async function buildRuntime(
     settingsRepo,
     syncFn:
       overrides?.syncFn ??
-      (() => syncAllFeeds({ catalogRepo, articleRepo, settingsRepo, fetcher, now })),
+      ((signal?: AbortSignal) =>
+        syncAllFeeds({ catalogRepo, articleRepo, settingsRepo, fetcher, now, signal })),
     prefetchFn:
       overrides?.prefetchFn ??
-      (async (options?: PrefetchCandidateOptions) => {
+      (async (options?: PrefetchCandidateOptions & { signal?: AbortSignal }) => {
         const maxBatch = await settingsRepo.getPrefetchBatchSize();
         return runWifiPrefetchAndPurge({
           catalogRepo,
@@ -211,6 +213,7 @@ async function buildRuntime(
           maxBatch,
           preferredPackId: options?.preferredPackId,
           preferredCategory: options?.preferredCategory,
+          signal: options?.signal,
         });
       }),
     registerBackgroundFn:
@@ -263,6 +266,9 @@ export function AppDataProvider({
   const mountedRef = useRef(true);
   const syncInFlightRef = useRef<Promise<SyncAllFeedsResult | null> | null>(null);
   const prefetchInFlightRef = useRef<Promise<WifiPrefetchAndPurgeResult | null> | null>(null);
+  const syncAbortRef = useRef<AbortController | null>(null);
+  const prefetchAbortRef = useRef<AbortController | null>(null);
+  const cancelRequestedRef = useRef(false);
   const pendingResyncRef = useRef(false);
   const lastSyncAttemptAtRef = useRef<number>(0);
   const appStateRef = useRef<AppStateStatus>(
@@ -372,6 +378,8 @@ export function AppDataProvider({
     }
 
     lastSyncAttemptAtRef.current = rt.now();
+    const controller = new AbortController();
+    syncAbortRef.current = controller;
 
     const task = (async () => {
       if (mountedRef.current) {
@@ -379,15 +387,21 @@ export function AppDataProvider({
       }
       try {
         await rt.refreshCatalogFn();
-        const result = await rt.syncFn();
+        if (controller.signal.aborted) {
+          return null;
+        }
+        const result = await rt.syncFn(controller.signal);
         await loadSnapshot(rt);
-        if (mountedRef.current) {
+        if (mountedRef.current && !controller.signal.aborted) {
           setLastSyncResult(result);
         }
         return result;
       } catch {
         return null;
       } finally {
+        if (syncAbortRef.current === controller) {
+          syncAbortRef.current = null;
+        }
         syncInFlightRef.current = null;
         if (mountedRef.current) {
           setIsSyncing(false);
@@ -415,21 +429,30 @@ export function AppDataProvider({
         return prefetchInFlightRef.current;
       }
 
+      const controller = new AbortController();
+      prefetchAbortRef.current = controller;
+
       const task = (async () => {
         if (mountedRef.current) {
           setIsPrefetching(true);
         }
         try {
-          const result = await rt.prefetchFn(options);
+          const result = await rt.prefetchFn({
+            ...options,
+            signal: controller.signal,
+          });
           await loadSnapshot(rt);
           await refreshNetworkState();
-          if (mountedRef.current) {
+          if (mountedRef.current && !controller.signal.aborted) {
             setLastPrefetchResult(result);
           }
           return result;
         } catch {
           return null;
         } finally {
+          if (prefetchAbortRef.current === controller) {
+            prefetchAbortRef.current = null;
+          }
           prefetchInFlightRef.current = null;
           if (mountedRef.current) {
             setIsPrefetching(false);
@@ -821,11 +844,26 @@ export function AppDataProvider({
     [loadSnapshot]
   );
 
+  const cancelSyncAndPrefetch = useCallback(() => {
+    cancelRequestedRef.current = true;
+    pendingResyncRef.current = false;
+    syncAbortRef.current?.abort();
+    prefetchAbortRef.current?.abort();
+    if (mountedRef.current) {
+      setIsSyncing(false);
+      setIsPrefetching(false);
+    }
+  }, []);
+
   const syncAndPrefetchNow = useCallback(
     async (
       options?: PrefetchCandidateOptions
     ): Promise<WifiPrefetchAndPurgeResult | null> => {
+      cancelRequestedRef.current = false;
       await syncNow();
+      if (cancelRequestedRef.current) {
+        return null;
+      }
       return prefetchNow(options);
     },
     [syncNow, prefetchNow]
@@ -902,6 +940,7 @@ export function AppDataProvider({
       syncNow,
       prefetchNow,
       syncAndPrefetchNow,
+      cancelSyncAndPrefetch,
       setPrefetchBatchSize,
       recordBlockedAds,
       clearPrefetchCache,
@@ -946,6 +985,7 @@ export function AppDataProvider({
       syncNow,
       prefetchNow,
       syncAndPrefetchNow,
+      cancelSyncAndPrefetch,
       setPrefetchBatchSize,
       recordBlockedAds,
       clearPrefetchCache,

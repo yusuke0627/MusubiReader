@@ -46,6 +46,7 @@ export default function HomeScreen() {
     dataVersion,
     syncNow,
     syncAndPrefetchNow,
+    cancelSyncAndPrefetch,
     setPrefetchBatchSize,
     listArticlesByPackAndCategory,
     toggleSaved,
@@ -398,53 +399,66 @@ export default function HomeScreen() {
               : `ダウンロード済みのみ (${downloadedInTabCount})`}
           </Text>
         </Pressable>
-        <View
-          style={[
-            styles.splitBtnGroup,
-            {
-              backgroundColor:
-                isSyncing || isPrefetching ? colors.border : colors.accent,
-            },
-          ]}
-        >
+        {isSyncing || isPrefetching ? (
           <Pressable
-            testID="home-prefetch-button"
+            testID="home-prefetch-cancel-button"
             accessibilityRole="button"
-            disabled={isSyncing || isPrefetching}
-            onPress={() =>
-              void syncAndPrefetchNow({
-                preferredPackId: selectedPackId,
-                preferredCategory:
-                  selectedCategory === ALL_CATEGORIES
-                    ? undefined
-                    : selectedCategory,
-              })
-            }
-            style={styles.splitMainBtn}
+            accessibilityLabel="取得をキャンセル"
+            onPress={cancelSyncAndPrefetch}
+            style={[
+              styles.cancelActiveBtn,
+              {
+                backgroundColor: colors.dangerSoft,
+                borderColor: colors.danger,
+              },
+            ]}
           >
-            {isSyncing || isPrefetching ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : null}
-            <Text numberOfLines={1} style={styles.prefetchBtnText}>
-              {isSyncing
-                ? '取得中…'
-                : isPrefetching
-                  ? 'DL中…'
-                  : `Wi-Fi DL (${prefetchBatchSize}件)`}
+            <ActivityIndicator size="small" color={colors.danger} />
+            <Text
+              numberOfLines={1}
+              style={[styles.cancelActiveBtnText, { color: colors.danger }]}
+            >
+              {isSyncing ? '取得中… ✕' : 'DL中… ✕'}
             </Text>
           </Pressable>
-          <View style={styles.splitDivider} />
-          <Pressable
-            testID="home-prefetch-count-picker-button"
-            accessibilityRole="button"
-            accessibilityLabel="Wi-Fiダウンロード件数を変更"
-            disabled={isSyncing || isPrefetching}
-            onPress={() => setIsCountPickerOpen(true)}
-            style={styles.splitChevronBtn}
+        ) : (
+          <View
+            style={[
+              styles.splitBtnGroup,
+              { backgroundColor: colors.accent },
+            ]}
           >
-            <Text style={styles.splitChevronText}>▾</Text>
-          </Pressable>
-        </View>
+            <Pressable
+              testID="home-prefetch-button"
+              accessibilityRole="button"
+              onPress={() =>
+                void syncAndPrefetchNow({
+                  preferredPackId: selectedPackId,
+                  preferredCategory:
+                    selectedCategory === ALL_CATEGORIES
+                      ? undefined
+                      : selectedCategory,
+                })
+              }
+              style={styles.splitMainBtn}
+            >
+              <Text numberOfLines={1} style={styles.prefetchBtnText}>
+                {`Wi-Fi DL (${prefetchBatchSize}件)`}
+              </Text>
+            </Pressable>
+            <View style={styles.splitDivider} />
+            <Pressable
+              testID="home-prefetch-count-picker-button"
+              accessibilityRole="button"
+              accessibilityLabel="Wi-Fiダウンロード件数を変更"
+              hitSlop={{ top: 8, bottom: 8, right: 8, left: 2 }}
+              onPress={() => setIsCountPickerOpen(true)}
+              style={styles.splitChevronBtn}
+            >
+              <Text style={styles.splitChevronText}>▾</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {isNonWifi && downloadedOnly ? (
@@ -650,31 +664,50 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
+    minHeight: 36,
+    borderRadius: 9,
     overflow: 'hidden',
   },
   splitMainBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
     paddingLeft: 11,
     paddingRight: 9,
-    paddingVertical: 7,
+    paddingVertical: 8,
   },
   splitDivider: {
     width: StyleSheet.hairlineWidth,
     alignSelf: 'stretch',
-    marginVertical: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    marginVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
   },
   splitChevronBtn: {
-    paddingHorizontal: 9,
-    paddingVertical: 7,
+    minWidth: 42,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   splitChevronText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  cancelActiveBtn: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 9,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cancelActiveBtnText: {
     fontSize: 12,
     fontWeight: '700',
   },

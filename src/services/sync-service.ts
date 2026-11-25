@@ -33,6 +33,7 @@ export interface SyncServiceDeps {
   now?: () => number;
   concurrency?: number;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface SyncAllFeedsResult {
@@ -313,10 +314,20 @@ interface FeedFetchOutcome {
 async function fetchAndParseFeed(
   feed: ResolvedFeed,
   fetcher: typeof fetch,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<FeedFetchOutcome> {
+  if (signal?.aborted) {
+    return { ok: false, feed, items: [] };
+  }
   try {
-    const response = await fetchWithTimeout(feed.rssUrl, fetcher, timeoutMs);
+    const response = await fetchWithTimeout(
+      feed.rssUrl,
+      fetcher,
+      timeoutMs,
+      undefined,
+      signal
+    );
     if (!response.ok) {
       return { ok: false, feed, items: [] };
     }
@@ -411,8 +422,11 @@ export async function syncAllFeeds(
     (feed) => feed.enabled && !feed.muted && !mutedSiteIds.has(feed.siteId)
   );
 
-  const outcomes = await mapWithConcurrency(activeFeeds, concurrency, (feed) =>
-    fetchAndParseFeed(feed, fetcher, timeoutMs)
+  const outcomes = await mapWithConcurrency(
+    activeFeeds,
+    concurrency,
+    (feed) => fetchAndParseFeed(feed, fetcher, timeoutMs, deps.signal),
+    deps.signal
   );
 
   let fetchedFeeds = 0;
@@ -420,6 +434,9 @@ export async function syncAllFeeds(
   const dedupedById = new Map<string, Article>();
 
   for (const outcome of outcomes) {
+    if (!outcome) {
+      continue;
+    }
     if (!outcome.ok) {
       failedFeeds += 1;
       continue;
