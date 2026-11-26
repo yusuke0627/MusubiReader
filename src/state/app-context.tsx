@@ -18,6 +18,7 @@ import {
 import type { PrefetchCandidateOptions } from '../domain/purge-policy';
 import type {
   Article,
+  BookmarkFolder,
   CacheEntry,
   CustomFeed,
   InterestKeyword,
@@ -103,6 +104,7 @@ export interface AppDataContextValue {
   customFeeds: CustomFeed[];
   interestKeywords: InterestKeyword[];
   ngWords: NgWord[];
+  bookmarkFolders: BookmarkFolder[];
   cacheEntries: CacheEntry[];
   networkState: NetworkStateLike | null;
   isSyncing: boolean;
@@ -137,6 +139,12 @@ export interface AppDataContextValue {
   getCacheEntry: (articleId: string) => Promise<CacheEntry | null>;
   recordArticleRead: (articleId: string, category: string) => Promise<void>;
   toggleSaved: (articleId: string) => Promise<void>;
+  createBookmarkFolder: (name: string) => Promise<BookmarkFolder | null>;
+  deleteBookmarkFolder: (folderId: string) => Promise<void>;
+  setArticleBookmarkFolder: (
+    articleId: string,
+    folderId: string | null
+  ) => Promise<void>;
   muteSite: (siteId: string, isCustom?: boolean) => Promise<void>;
   unmuteSite: (siteId: string, isCustom?: boolean) => Promise<void>;
   setPackEnabled: (packId: string, enabled: boolean) => Promise<void>;
@@ -286,6 +294,7 @@ export function AppDataProvider({
     []
   );
   const [ngWords, setNgWords] = useState<NgWord[]>([]);
+  const [bookmarkFolders, setBookmarkFolders] = useState<BookmarkFolder[]>([]);
   const [cacheEntries, setCacheEntries] = useState<CacheEntry[]>([]);
   const [networkState, setNetworkState] = useState<NetworkStateLike | null>(
     null
@@ -313,6 +322,7 @@ export function AppDataProvider({
       custom,
       keywords,
       ngs,
+      folders,
       caches,
       batchSize,
       blockedTotal,
@@ -323,6 +333,7 @@ export function AppDataProvider({
       rt.settingsRepo.listCustomFeeds(),
       rt.settingsRepo.listInterestKeywords(),
       rt.settingsRepo.listNgWords(),
+      rt.articleRepo.listBookmarkFolders(),
       rt.articleRepo.listCacheEntries(),
       rt.settingsRepo.getPrefetchBatchSize(),
       rt.settingsRepo.getTotalBlockedAds(),
@@ -339,6 +350,7 @@ export function AppDataProvider({
     setCustomFeeds(custom);
     setInterestKeywords(keywords);
     setNgWords(ngs);
+    setBookmarkFolders(folders);
     setCacheEntries(caches);
     setPrefetchBatchSizeState(batchSize);
     setTotalBlockedAds(blockedTotal);
@@ -636,6 +648,56 @@ export function AppDataProvider({
     [loadSnapshot]
   );
 
+  const createBookmarkFolder = useCallback(
+    async (rawName: string): Promise<BookmarkFolder | null> => {
+      const rt = runtimeRef.current;
+      const name = rawName.trim();
+      if (!rt || !name) {
+        return null;
+      }
+      const existing = await rt.articleRepo.listBookmarkFolders();
+      const duplicate = existing.find(
+        (folder) => folder.name.toLowerCase() === name.toLowerCase()
+      );
+      if (duplicate) {
+        return duplicate;
+      }
+      const folder: BookmarkFolder = {
+        id: makeRuleId('folder', name, rt.now()),
+        name,
+        createdAt: rt.now(),
+      };
+      await rt.articleRepo.upsertBookmarkFolder(folder);
+      await loadSnapshot(rt);
+      return folder;
+    },
+    [loadSnapshot]
+  );
+
+  const deleteBookmarkFolder = useCallback(
+    async (folderId: string): Promise<void> => {
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return;
+      }
+      await rt.articleRepo.deleteBookmarkFolder(folderId);
+      await loadSnapshot(rt);
+    },
+    [loadSnapshot]
+  );
+
+  const setArticleBookmarkFolder = useCallback(
+    async (articleId: string, folderId: string | null): Promise<void> => {
+      const rt = runtimeRef.current;
+      if (!rt) {
+        return;
+      }
+      await rt.articleRepo.setBookmarkFolder(articleId, folderId);
+      await loadSnapshot(rt);
+    },
+    [loadSnapshot]
+  );
+
   const muteSite = useCallback(
     async (siteId: string, isCustom = false) => {
       const rt = runtimeRef.current;
@@ -926,6 +988,7 @@ export function AppDataProvider({
       customFeeds,
       interestKeywords,
       ngWords,
+      bookmarkFolders,
       cacheEntries,
       networkState,
       isSyncing,
@@ -951,6 +1014,9 @@ export function AppDataProvider({
       getCacheEntry,
       recordArticleRead,
       toggleSaved,
+      createBookmarkFolder,
+      deleteBookmarkFolder,
+      setArticleBookmarkFolder,
       muteSite,
       unmuteSite,
       setPackEnabled,
@@ -971,6 +1037,7 @@ export function AppDataProvider({
       customFeeds,
       interestKeywords,
       ngWords,
+      bookmarkFolders,
       cacheEntries,
       networkState,
       isSyncing,
@@ -996,6 +1063,9 @@ export function AppDataProvider({
       getCacheEntry,
       recordArticleRead,
       toggleSaved,
+      createBookmarkFolder,
+      deleteBookmarkFolder,
+      setArticleBookmarkFolder,
       muteSite,
       unmuteSite,
       setPackEnabled,

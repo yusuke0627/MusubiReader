@@ -81,6 +81,13 @@ export interface Article {
   readonly isSaved: boolean;
   readonly isRead: boolean;
   readonly isPrefetched?: boolean;
+  readonly bookmarkFolderId?: string | null;
+}
+
+export interface BookmarkFolder {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: number;
 }
 
 export interface InterestKeyword {
