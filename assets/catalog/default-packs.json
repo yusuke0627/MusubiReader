@@ -1,7 +1,23 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-23T09:30:00Z",
+  "updatedAt": "2026-11-26T04:35:00Z",
   "packs": [
+    {
+      "packId": "musubi-official",
+      "name": "Musubi公式",
+      "description": "海外・国内の話題を3行まとめと要点解説でお届けする MusubiPublisher 公式パック",
+      "defaultEnabled": true,
+      "feeds": [
+        {
+          "packId": "musubi-official",
+          "siteId": "musubi-publisher",
+          "name": "MusubiPublisher",
+          "rssUrl": "https://yusuke0627.github.io/MusubiPublisher/rss.xml",
+          "category": "キュレーション",
+          "deprecated": false
+        }
+      ]
+    },
     {
       "packId": "matome-5ch",
       "name": "5chまとめ",
