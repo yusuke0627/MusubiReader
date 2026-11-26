@@ -13,8 +13,17 @@ const path = require('node:path') as {
   join(...paths: string[]): string;
 };
 
-test('bundled catalog has schemaVersion 1, matome-5ch pack, tech-jp pack, and unique siteIds', () => {
+test('bundled catalog has schemaVersion 1, musubi-official pack, matome-5ch pack, tech-jp pack, and unique siteIds', () => {
   expect(defaultPacks.schemaVersion).toBe(1);
+
+  const official = defaultPacks.packs.find((p) => p.packId === 'musubi-official');
+  expect(official).toBeDefined();
+  expect(official?.defaultEnabled).toBe(true);
+  expect(
+    official?.feeds.some(
+      (f) => f.rssUrl === 'https://yusuke0627.github.io/MusubiPublisher/rss.xml'
+    )
+  ).toBe(true);
 
   const matome = defaultPacks.packs.find((p) => p.packId === 'matome-5ch');
   expect(matome).toBeDefined();
