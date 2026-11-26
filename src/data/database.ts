@@ -30,7 +30,7 @@ export interface SQLiteDatabaseLike {
 }
 
 export const DEFAULT_DATABASE_NAME = 'musubireader.db';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const MIGRATION_V1_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -149,6 +149,14 @@ CREATE TABLE IF NOT EXISTS app_preferences (
 );
 `;
 
+const MIGRATION_V2_SQL = `
+CREATE TABLE IF NOT EXISTS bookmark_folders (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+`;
+
 /**
  * Applies idempotent schema migrations and enables SQLite foreign keys.
  */
@@ -156,6 +164,18 @@ export async function runMigrations(db: SQLiteDatabaseLike): Promise<void> {
   await db.execAsync('PRAGMA foreign_keys = ON;');
   await db.withTransactionAsync(async () => {
     await db.execAsync(MIGRATION_V1_SQL);
+    await db.execAsync(MIGRATION_V2_SQL);
+    const cols = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(articles)'
+    );
+    const hasBookmarkFolderCol = cols.some(
+      (col) => col.name === 'bookmark_folder_id'
+    );
+    if (!hasBookmarkFolderCol) {
+      await db.execAsync(
+        'ALTER TABLE articles ADD COLUMN bookmark_folder_id TEXT;'
+      );
+    }
     await db.runAsync(
       'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)',
       [SCHEMA_VERSION, Date.now()]

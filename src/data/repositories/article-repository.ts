@@ -5,6 +5,7 @@ import {
 import type { planPurge } from '../../domain/purge-policy';
 import type {
   Article,
+  BookmarkFolder,
   CacheEntry,
   NgWord,
   ReadHistoryEntry,
@@ -37,6 +38,13 @@ interface ArticleRow {
   is_saved: number;
   is_read: number;
   is_prefetched: number;
+  bookmark_folder_id: string | null;
+}
+
+interface BookmarkFolderRow {
+  id: string;
+  name: string;
+  created_at: number;
 }
 
 interface ReadHistoryRow {
@@ -56,7 +64,8 @@ interface CacheEntryRow {
 
 const ARTICLE_SELECT_COLUMNS = `
   id, pack_id, site_id, site_name, category, title, url, summary,
-  tags_json, published_at, fetched_at, is_saved, is_read, is_prefetched
+  tags_json, published_at, fetched_at, is_saved, is_read, is_prefetched,
+  bookmark_folder_id
 `;
 
 let readHistorySeq = 0;
@@ -99,6 +108,7 @@ function mapArticleRow(row: ArticleRow): Article {
     isSaved: fromSqlBool(row.is_saved),
     isRead: fromSqlBool(row.is_read),
     isPrefetched: fromSqlBool(row.is_prefetched),
+    bookmarkFolderId: row.bookmark_folder_id ?? null,
   };
 }
 
@@ -389,6 +399,50 @@ export class ArticleRepository {
         );
       }
     });
+  }
+
+  async listBookmarkFolders(): Promise<BookmarkFolder[]> {
+    const rows = await this.db.getAllAsync<BookmarkFolderRow>(
+      `SELECT id, name, created_at
+       FROM bookmark_folders
+       ORDER BY created_at ASC, id ASC`
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      createdAt: row.created_at,
+    }));
+  }
+
+  async upsertBookmarkFolder(folder: BookmarkFolder): Promise<void> {
+    await this.db.runAsync(
+      `INSERT INTO bookmark_folders (id, name, created_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name`,
+      [folder.id, folder.name, folder.createdAt]
+    );
+  }
+
+  async deleteBookmarkFolder(folderId: string): Promise<void> {
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync(
+        'UPDATE articles SET bookmark_folder_id = NULL WHERE bookmark_folder_id = ?',
+        [folderId]
+      );
+      await this.db.runAsync('DELETE FROM bookmark_folders WHERE id = ?', [
+        folderId,
+      ]);
+    });
+  }
+
+  async setBookmarkFolder(
+    articleId: string,
+    folderId: string | null
+  ): Promise<void> {
+    await this.db.runAsync(
+      'UPDATE articles SET bookmark_folder_id = ? WHERE id = ?',
+      [folderId, articleId]
+    );
   }
 
   private async loadBlockingContext(): Promise<{

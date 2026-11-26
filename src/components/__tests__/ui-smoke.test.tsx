@@ -1556,4 +1556,143 @@ describe('MusubiReader UI smoke tests', () => {
     await flushEffects();
     close();
   });
+
+  test('BookmarksScreen supports custom folders, folder filtering, folder deletion, and Undo after un-saving', async () => {
+    const { db, close } = createInMemoryDb();
+    await openDatabase(db);
+    const catalogRepo = new CatalogRepository(db);
+    const articleRepo = new ArticleRepository(db);
+    const settingsRepo = new SettingsRepository(db);
+    await catalogRepo.getEffectiveCatalog();
+
+    await articleRepo.upsertArticles([
+      makeSampleArticle({
+        id: 'bf-1',
+        title: '技術メモに残したい記事',
+        isSaved: true,
+      }),
+      makeSampleArticle({
+        id: 'bf-2',
+        title: 'あとで読む雑談記事',
+        isSaved: true,
+      }),
+    ]);
+
+    const runtime: AppRuntimeOverrides = {
+      db,
+      catalogRepo,
+      articleRepo,
+      settingsRepo,
+      syncFn: async () => ({
+        fetchedFeeds: 0,
+        failedFeeds: 0,
+        newArticles: 0,
+        newKeywordMatches: [],
+      }),
+      prefetchFn: async () => ({
+        skippedNotWifi: false,
+        prefetchedCount: 0,
+        purgedCacheCount: 0,
+        purgedMetadataCount: 0,
+      }),
+      registerBackgroundFn: async () => {},
+      configureNotificationsFn: async () => {},
+      remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
+    };
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <BookmarksScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    // 1. Create a custom folder "技術メモ"
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'bookmarks-add-folder-button'));
+    });
+    await act(async () => {
+      findByTestId(root.container, 'bookmark-new-folder-input').props.onChangeText(
+        '技術メモ'
+      );
+    });
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'bookmark-new-folder-submit'));
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const folders = await articleRepo.listBookmarkFolders();
+    expect(folders).toHaveLength(1);
+    const techFolderId = folders[0].id;
+
+    // 2. Assign bf-1 to "技術メモ" via folder chip -> sheet
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'bookmark-folder-chip-bf-1'));
+    });
+    await act(async () => {
+      pressNode(
+        findByTestId(root.container, `bookmark-assign-folder-${techFolderId}`)
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    // 3. Filter by custom folder -> only bf-1 visible
+    await act(async () => {
+      pressNode(
+        findByTestId(root.container, `bookmark-folder-tab-${techFolderId}`)
+      );
+    });
+    let text = extractAllText(root.container);
+    expect(text).toContain('技術メモに残したい記事');
+    expect(text).not.toContain('あとで読む雑談記事');
+
+    // 4. Un-save bf-1 -> Undo bar appears; tapping Undo restores bf-1 in same folder
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'article-bookmark-button-bf-1'));
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(findByTestId(root.container, 'bookmarks-undo-bar')).toBeDefined();
+    expect(extractAllText(root.container)).not.toContain(
+      '技術メモに残したい記事'
+    );
+
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'bookmarks-undo-button'));
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(extractAllText(root.container)).toContain('技術メモに残したい記事');
+    const restored = await articleRepo.getById('bf-1');
+    expect(restored?.isSaved).toBe(true);
+    expect(restored?.bookmarkFolderId).toBe(techFolderId);
+
+    // 5. Delete custom folder -> article is preserved as unfiled (bookmarkFolderId = null)
+    await act(async () => {
+      pressNode(
+        findByTestId(root.container, `bookmark-folder-delete-${techFolderId}`)
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(await articleRepo.listBookmarkFolders()).toHaveLength(0);
+    const afterFolderDelete = await articleRepo.getById('bf-1');
+    expect(afterFolderDelete?.isSaved).toBe(true);
+    expect(afterFolderDelete?.bookmarkFolderId).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    await flushEffects();
+    close();
+  });
 });
