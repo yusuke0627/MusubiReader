@@ -9,6 +9,8 @@ export interface ArticleRowProps {
   onPress: (article: Article) => void;
   onToggleSave: (article: Article) => void;
   onMuteSite?: (article: Article) => void;
+  folderLabel?: string;
+  onPressFolder?: (article: Article) => void;
   nowMs?: number;
 }
 
@@ -49,6 +51,8 @@ export function ArticleRow({
   onPress,
   onToggleSave,
   onMuteSite,
+  folderLabel,
+  onPressFolder,
   nowMs,
 }: ArticleRowProps) {
   const colors = useThemeColors();
@@ -147,10 +151,32 @@ export function ArticleRow({
       </Pressable>
 
       <View style={styles.footerRow}>
-        <Text style={[styles.categoryLabel, { color: colors.textMuted }]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.categoryLabel, { color: colors.textMuted }]}
+        >
           {article.category}
         </Text>
         <View style={styles.footerActions}>
+          {folderLabel && onPressFolder ? (
+            <Pressable
+              testID={`bookmark-folder-chip-${article.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`${article.title}のフォルダを変更`}
+              onPress={() => onPressFolder(article)}
+              style={[
+                styles.menuButton,
+                { backgroundColor: colors.surfaceSecondary },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.menuButtonText, { color: colors.text }]}
+              >
+                {`📁 ${folderLabel} ▾`}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             testID={`article-bookmark-button-${article.id}`}
             accessibilityRole="button"
@@ -171,6 +197,7 @@ export function ArticleRow({
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.menuButtonText,
                 {
@@ -183,29 +210,32 @@ export function ArticleRow({
               {article.isSaved ? '★ ブックマーク済み' : '☆ ブックマーク'}
             </Text>
           </Pressable>
-          <Pressable
-            testID={`article-menu-button-${article.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={`${article.title}のメニュー`}
-            onPress={() => setMenuOpen((prev) => !prev)}
-            style={[
-              styles.menuButton,
-              {
-                backgroundColor: menuOpen
-                  ? colors.accentSoft
-                  : colors.surfaceSecondary,
-              },
-            ]}
-          >
-            <Text
+          {!onPressFolder || onMuteSite ? (
+            <Pressable
+              testID={`article-menu-button-${article.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`${article.title}のメニュー`}
+              onPress={() => setMenuOpen((prev) => !prev)}
               style={[
-                styles.menuButtonText,
-                { color: menuOpen ? colors.accentText : colors.textSecondary },
+                styles.menuButton,
+                {
+                  backgroundColor: menuOpen
+                    ? colors.accentSoft
+                    : colors.surfaceSecondary,
+                },
               ]}
             >
-              メニュー
-            </Text>
-          </Pressable>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.menuButtonText,
+                  { color: menuOpen ? colors.accentText : colors.textSecondary },
+                ]}
+              >
+                メニュー
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 

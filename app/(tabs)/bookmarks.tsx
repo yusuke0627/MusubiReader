@@ -429,36 +429,13 @@ export default function BookmarksScreen() {
               ? folderNameById.get(item.bookmarkFolderId)!
               : '未分類';
           return (
-            <View>
-              <ArticleRow
-                article={item}
-                onPress={handleOpenArticle}
-                onToggleSave={handleToggleSave}
-              />
-              <View style={styles.folderChipRow}>
-                <Pressable
-                  testID={`bookmark-folder-chip-${item.id}`}
-                  accessibilityRole="button"
-                  onPress={() => setAssigningArticle(item)}
-                  style={[
-                    styles.articleFolderChip,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.articleFolderChipText,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {`📁 ${folderName} ▾`}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+            <ArticleRow
+              article={item}
+              onPress={handleOpenArticle}
+              onToggleSave={handleToggleSave}
+              folderLabel={folderName}
+              onPressFolder={setAssigningArticle}
+            />
           );
         }}
         ListEmptyComponent={renderEmpty}
@@ -791,23 +768,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingVertical: 8,
     paddingBottom: 76,
-  },
-  folderChipRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    marginTop: -4,
-    marginBottom: 8,
-  },
-  articleFolderChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  articleFolderChipText: {
-    fontSize: 11,
-    fontWeight: '600',
   },
   emptyListContent: {
     flexGrow: 1,
