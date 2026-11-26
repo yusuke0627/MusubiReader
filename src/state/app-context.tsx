@@ -87,7 +87,7 @@ interface ResolvedRuntime {
   registerBackgroundFn: () => Promise<void>;
   configureNotificationsFn: () => Promise<void>;
   requestNotificationPermissionsFn: () => Promise<boolean>;
-  refreshCatalogFn: () => Promise<void>;
+  refreshCatalogFn: (signal?: AbortSignal) => Promise<void>;
   syncAdBlockRulesFn: () => Promise<void>;
   getNetworkStateFn: () => Promise<NetworkStateLike>;
   deleteCachePathFn: (targetPath: string) => Promise<void>;
@@ -232,12 +232,15 @@ async function buildRuntime(
     requestNotificationPermissionsFn:
       overrides?.requestNotificationPermissionsFn ??
       (() => ensureNotificationPermissions()),
-    refreshCatalogFn: async () => {
-      if (!remoteConfig.catalogUrl) {
+    refreshCatalogFn: async (signal?: AbortSignal) => {
+      if (!remoteConfig.catalogUrl || signal?.aborted) {
         return;
       }
       await catalogRepo
-        .refreshFromRemote(remoteConfig.catalogUrl, createTimeoutFetcher(fetcher))
+        .refreshFromRemote(
+          remoteConfig.catalogUrl,
+          createTimeoutFetcher(fetcher, undefined, signal)
+        )
         .catch(() => {});
     },
     syncAdBlockRulesFn: async () => {
@@ -276,7 +279,7 @@ export function AppDataProvider({
   const prefetchInFlightRef = useRef<Promise<WifiPrefetchAndPurgeResult | null> | null>(null);
   const syncAbortRef = useRef<AbortController | null>(null);
   const prefetchAbortRef = useRef<AbortController | null>(null);
-  const cancelRequestedRef = useRef(false);
+  const operationGenRef = useRef(0);
   const pendingResyncRef = useRef(false);
   const lastSyncAttemptAtRef = useRef<number>(0);
   const appStateRef = useRef<AppStateStatus>(
@@ -390,6 +393,7 @@ export function AppDataProvider({
     }
 
     lastSyncAttemptAtRef.current = rt.now();
+    const myGen = operationGenRef.current;
     const controller = new AbortController();
     syncAbortRef.current = controller;
 
@@ -398,13 +402,20 @@ export function AppDataProvider({
         setIsSyncing(true);
       }
       try {
-        await rt.refreshCatalogFn();
-        if (controller.signal.aborted) {
+        await rt.refreshCatalogFn(controller.signal);
+        if (operationGenRef.current !== myGen || controller.signal.aborted) {
           return null;
         }
         const result = await rt.syncFn(controller.signal);
+        if (operationGenRef.current !== myGen || controller.signal.aborted) {
+          return null;
+        }
         await loadSnapshot(rt);
-        if (mountedRef.current && !controller.signal.aborted) {
+        if (
+          mountedRef.current &&
+          operationGenRef.current === myGen &&
+          !controller.signal.aborted
+        ) {
           setLastSyncResult(result);
         }
         return result;
@@ -414,13 +425,15 @@ export function AppDataProvider({
         if (syncAbortRef.current === controller) {
           syncAbortRef.current = null;
         }
-        syncInFlightRef.current = null;
-        if (mountedRef.current) {
-          setIsSyncing(false);
-        }
-        if (pendingResyncRef.current && mountedRef.current) {
-          pendingResyncRef.current = false;
-          void syncNow();
+        if (operationGenRef.current === myGen) {
+          syncInFlightRef.current = null;
+          if (mountedRef.current) {
+            setIsSyncing(false);
+          }
+          if (pendingResyncRef.current && mountedRef.current) {
+            pendingResyncRef.current = false;
+            void syncNow();
+          }
         }
       }
     })();
@@ -441,6 +454,7 @@ export function AppDataProvider({
         return prefetchInFlightRef.current;
       }
 
+      const myGen = operationGenRef.current;
       const controller = new AbortController();
       prefetchAbortRef.current = controller;
 
@@ -453,9 +467,16 @@ export function AppDataProvider({
             ...options,
             signal: controller.signal,
           });
+          if (operationGenRef.current !== myGen || controller.signal.aborted) {
+            return null;
+          }
           await loadSnapshot(rt);
           await refreshNetworkState();
-          if (mountedRef.current && !controller.signal.aborted) {
+          if (
+            mountedRef.current &&
+            operationGenRef.current === myGen &&
+            !controller.signal.aborted
+          ) {
             setLastPrefetchResult(result);
           }
           return result;
@@ -465,9 +486,11 @@ export function AppDataProvider({
           if (prefetchAbortRef.current === controller) {
             prefetchAbortRef.current = null;
           }
-          prefetchInFlightRef.current = null;
-          if (mountedRef.current) {
-            setIsPrefetching(false);
+          if (operationGenRef.current === myGen) {
+            prefetchInFlightRef.current = null;
+            if (mountedRef.current) {
+              setIsPrefetching(false);
+            }
           }
         }
       })();
@@ -502,12 +525,16 @@ export function AppDataProvider({
         setIsReady(true);
 
         // Configure foreground notifications, pre-compile ad-block rules, register OS background tasks,
-        // and trigger non-blocking initial sync.
+        // and trigger non-blocking initial sync + prefetch (abortable as one generation).
         void rt.configureNotificationsFn().catch(() => {});
         void rt.syncAdBlockRulesFn().catch(() => {});
         rt.registerBackgroundFn().catch(() => {});
+        const startupGen = operationGenRef.current;
         void (async () => {
           await syncNow();
+          if (operationGenRef.current !== startupGen || cancelled || !mountedRef.current) {
+            return;
+          }
           await prefetchNow();
         })();
       } catch (err) {
@@ -555,8 +582,12 @@ export function AppDataProvider({
       }
       const elapsed = rt.now() - lastSyncAttemptAtRef.current;
       if (elapsed >= FOREGROUND_SYNC_COOLDOWN_MS) {
+        const resumeGen = operationGenRef.current;
         void (async () => {
           await syncNow();
+          if (operationGenRef.current !== resumeGen || !mountedRef.current) {
+            return;
+          }
           await prefetchNow();
         })();
       }
@@ -907,10 +938,14 @@ export function AppDataProvider({
   );
 
   const cancelSyncAndPrefetch = useCallback(() => {
-    cancelRequestedRef.current = true;
+    operationGenRef.current += 1;
     pendingResyncRef.current = false;
     syncAbortRef.current?.abort();
     prefetchAbortRef.current?.abort();
+    syncAbortRef.current = null;
+    prefetchAbortRef.current = null;
+    syncInFlightRef.current = null;
+    prefetchInFlightRef.current = null;
     if (mountedRef.current) {
       setIsSyncing(false);
       setIsPrefetching(false);
@@ -921,9 +956,9 @@ export function AppDataProvider({
     async (
       options?: PrefetchCandidateOptions
     ): Promise<WifiPrefetchAndPurgeResult | null> => {
-      cancelRequestedRef.current = false;
+      const myGen = operationGenRef.current;
       await syncNow();
-      if (cancelRequestedRef.current) {
+      if (operationGenRef.current !== myGen) {
         return null;
       }
       return prefetchNow(options);

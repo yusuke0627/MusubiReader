@@ -1402,6 +1402,12 @@ describe('MusubiReader UI smoke tests', () => {
 
     let resolveSync: (() => void) | null = null;
     let capturedSignal: AbortSignal | undefined;
+    const prefetchFn = jest.fn(async () => ({
+      skippedNotWifi: false,
+      prefetchedCount: 0,
+      purgedCacheCount: 0,
+      purgedMetadataCount: 0,
+    }));
     const runtime: AppRuntimeOverrides = {
       db,
       catalogRepo,
@@ -1420,12 +1426,7 @@ describe('MusubiReader UI smoke tests', () => {
             });
         });
       },
-      prefetchFn: async () => ({
-        skippedNotWifi: false,
-        prefetchedCount: 0,
-        purgedCacheCount: 0,
-        purgedMetadataCount: 0,
-      }),
+      prefetchFn,
       registerBackgroundFn: async () => {},
       configureNotificationsFn: async () => {},
       remoteConfig: { catalogUrl: null, adBlockRulesUrl: null },
@@ -1463,6 +1464,17 @@ describe('MusubiReader UI smoke tests', () => {
         pressNode(findByTestId(root.container, 'home-prefetch-cancel-button'));
       });
       expect(capturedSignal?.aborted).toBe(true);
+      expect(
+        extractAllText(findByTestId(root.container, 'home-prefetch-button'))
+      ).toContain('Wi-Fi DL');
+
+      // Even after the cancelled sync promise settles, startup must NOT chain into prefetchFn
+      await act(async () => {
+        resolveSync?.();
+      });
+      await flushEffects();
+      await flushEffects();
+      expect(prefetchFn).not.toHaveBeenCalled();
       expect(
         extractAllText(findByTestId(root.container, 'home-prefetch-button'))
       ).toContain('Wi-Fi DL');

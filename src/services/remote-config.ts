@@ -82,7 +82,8 @@ export function getRemoteConfig(): RemoteConfig {
  */
 export function createTimeoutFetcher(
   baseFetcher: typeof fetch = fetch,
-  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
+  signal?: AbortSignal
 ): typeof fetch {
   return ((input: RequestInfo | URL) => {
     const targetUrl =
@@ -91,7 +92,7 @@ export function createTimeoutFetcher(
         : input instanceof URL
           ? input.toString()
           : input.url;
-    return fetchWithTimeout(targetUrl, baseFetcher, timeoutMs);
+    return fetchWithTimeout(targetUrl, baseFetcher, timeoutMs, undefined, signal);
   }) as typeof fetch;
 }
 
