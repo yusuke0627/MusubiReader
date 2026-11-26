@@ -25,6 +25,11 @@ export interface MusubiWebViewLoadEndEvent {
   error?: string;
 }
 
+export interface MusubiWebViewAutoScrollEvent {
+  isScrolling: boolean;
+  reason?: 'end_reached' | 'user_interaction';
+}
+
 export interface CompileAdBlockRulesResult {
   compiled: boolean;
   usedFallback: boolean;
@@ -43,8 +48,13 @@ export interface MusubiWebViewProps extends ViewProps {
   adBlockEnabled?: boolean;
   preferOfflineCache?: boolean;
   ignoreHttpCache?: boolean;
+  autoScrollEnabled?: boolean;
+  autoScrollSpeed?: number;
   onLoadStart?: (event: NativeSyntheticEvent<MusubiWebViewLoadStartEvent>) => void;
   onLoadEnd?: (event: NativeSyntheticEvent<MusubiWebViewLoadEndEvent>) => void;
+  onAutoScrollStateChange?: (
+    event: NativeSyntheticEvent<MusubiWebViewAutoScrollEvent>
+  ) => void;
 }
 
 interface NativeMusubiWebViewProps extends ViewProps {
@@ -53,8 +63,13 @@ interface NativeMusubiWebViewProps extends ViewProps {
   adBlockEnabled: boolean;
   preferOfflineCache: boolean;
   ignoreHttpCache: boolean;
+  autoScrollEnabled: boolean;
+  autoScrollSpeed: number;
   onLoadStart?: (event: NativeSyntheticEvent<MusubiWebViewLoadStartEvent>) => void;
   onLoadEnd?: (event: NativeSyntheticEvent<MusubiWebViewLoadEndEvent>) => void;
+  onAutoScrollStateChange?: (
+    event: NativeSyntheticEvent<MusubiWebViewAutoScrollEvent>
+  ) => void;
 }
 
 const WEB_IFRAME_STYLE: CSSProperties = {
@@ -108,8 +123,11 @@ export function MusubiWebView({
   adBlockEnabled = true,
   preferOfflineCache = false,
   ignoreHttpCache = false,
+  autoScrollEnabled = false,
+  autoScrollSpeed = 40,
   onLoadStart,
   onLoadEnd,
+  onAutoScrollStateChange,
   style,
   ...viewProps
 }: MusubiWebViewProps): JSX.Element {
@@ -139,8 +157,11 @@ export function MusubiWebView({
         adBlockEnabled={adBlockEnabled}
         preferOfflineCache={preferOfflineCache}
         ignoreHttpCache={ignoreHttpCache}
+        autoScrollEnabled={autoScrollEnabled}
+        autoScrollSpeed={autoScrollSpeed}
         onLoadStart={onLoadStart}
         onLoadEnd={onLoadEnd}
+        onAutoScrollStateChange={onAutoScrollStateChange}
       />
     );
   }

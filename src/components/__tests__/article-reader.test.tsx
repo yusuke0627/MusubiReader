@@ -617,4 +617,67 @@ describe('ArticleReaderScreen', () => {
     });
     close();
   });
+
+  test('toggles variable-speed auto-scroll and stops when native reports end_reached', async () => {
+    const { articleRepo, runtime, close } = await setupHarness();
+    await articleRepo.upsertArticles([makeSampleArticle({ id: 'art-1' })]);
+
+    const root = createRoot();
+    await act(async () => {
+      root.render(
+        <AppDataProvider runtime={runtime}>
+          <ArticleReaderScreen />
+        </AppDataProvider>
+      );
+    });
+    await flushEffects();
+    await flushEffects();
+
+    expect(capturedWebViewProps?.autoScrollEnabled).toBe(false);
+    expect(capturedWebViewProps?.autoScrollSpeed).toBe(40);
+
+    // Start auto-scroll
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'reader-autoscroll-toggle'));
+    });
+    expect(capturedWebViewProps?.autoScrollEnabled).toBe(true);
+    expect(
+      extractAllText(
+        findByTestId(root.container, 'reader-autoscroll-speed-label')
+      )
+    ).toContain('1.0x');
+
+    // Speed up to 1.5x (62 pt/s)
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'reader-autoscroll-faster'));
+    });
+    expect(capturedWebViewProps?.autoScrollSpeed).toBe(62);
+    expect(
+      extractAllText(
+        findByTestId(root.container, 'reader-autoscroll-speed-label')
+      )
+    ).toContain('1.5x');
+
+    // Slow down back to 1.0x (40 pt/s)
+    await act(async () => {
+      pressNode(findByTestId(root.container, 'reader-autoscroll-slower'));
+    });
+    expect(capturedWebViewProps?.autoScrollSpeed).toBe(40);
+
+    // Native reports end_reached -> auto-scroll stops cleanly
+    const onAutoScrollStateChange = capturedWebViewProps?.onAutoScrollStateChange as
+      | ((event: { nativeEvent: { isScrolling: boolean; reason?: string } }) => void)
+      | undefined;
+    await act(async () => {
+      onAutoScrollStateChange?.({
+        nativeEvent: { isScrolling: false, reason: 'end_reached' },
+      });
+    });
+    expect(capturedWebViewProps?.autoScrollEnabled).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+    });
+    close();
+  });
 });
