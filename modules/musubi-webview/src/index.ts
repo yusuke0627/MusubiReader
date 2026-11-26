@@ -8,6 +8,7 @@ export {
   isHttpUrl,
   MusubiWebView,
   type CompileAdBlockRulesResult,
+  type MusubiWebViewAutoScrollEvent,
   type MusubiWebViewLoadEndEvent,
   type MusubiWebViewLoadStartEvent,
   type MusubiWebViewNativeModule,

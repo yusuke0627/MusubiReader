@@ -14,11 +14,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   isHttpUrl,
   MusubiWebView,
+  type MusubiWebViewAutoScrollEvent,
   type MusubiWebViewLoadEndEvent,
 } from '../../modules/musubi-webview/src';
 import type { Article } from '../../src/domain/types';
 import { useAppData } from '../../src/state/app-context';
 import { useThemeColors } from '../../src/theme/tokens';
+
+export const AUTO_SCROLL_SPEED_PRESETS = [
+  { label: '0.5x', pointsPerSecond: 22 },
+  { label: '1.0x', pointsPerSecond: 40 },
+  { label: '1.5x', pointsPerSecond: 62 },
+  { label: '2.0x', pointsPerSecond: 88 },
+  { label: '2.5x', pointsPerSecond: 120 },
+] as const;
+
+let lastAutoScrollSpeedIndex = 1;
 
 function normalizeParamId(rawId: string | string[] | undefined): string {
   const value = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -52,6 +63,42 @@ export default function ArticleReaderScreen() {
   const [blockedCount, setBlockedCount] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isTogglingSave, setIsTogglingSave] = useState(false);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+  const [autoScrollSpeedIndex, setAutoScrollSpeedIndex] = useState(
+    lastAutoScrollSpeedIndex
+  );
+
+  const currentSpeedPreset =
+    AUTO_SCROLL_SPEED_PRESETS[autoScrollSpeedIndex] ??
+    AUTO_SCROLL_SPEED_PRESETS[1];
+
+  useEffect(() => {
+    setIsAutoScrolling(false);
+  }, [articleId]);
+
+  const handleToggleAutoScroll = useCallback(() => {
+    setIsAutoScrolling((prev) => !prev);
+  }, []);
+
+  const handleChangeAutoScrollSpeed = useCallback((delta: -1 | 1) => {
+    setAutoScrollSpeedIndex((prev) => {
+      const next = Math.max(
+        0,
+        Math.min(AUTO_SCROLL_SPEED_PRESETS.length - 1, prev + delta)
+      );
+      lastAutoScrollSpeedIndex = next;
+      return next;
+    });
+  }, []);
+
+  const handleAutoScrollStateChange = useCallback(
+    (event: NativeSyntheticEvent<MusubiWebViewAutoScrollEvent>) => {
+      if (!event.nativeEvent.isScrolling) {
+        setIsAutoScrolling(false);
+      }
+    },
+    []
+  );
 
   const recordedArticleIdRef = useRef<string | null>(null);
   const recordedBlockedArticleIdRef = useRef<string | null>(null);
@@ -524,15 +571,95 @@ export default function ArticleReaderScreen() {
         </View>
       ) : null}
 
-      <MusubiWebView
-        style={styles.webView}
-        url={article.url}
-        offlineHtmlPath={offlineHtmlPath}
-        adBlockEnabled={true}
-        preferOfflineCache={preferCache && Boolean(offlineHtmlPath)}
-        onLoadStart={handleLoadStart}
-        onLoadEnd={handleLoadEnd}
-      />
+      <View style={styles.webViewWrapper}>
+        <MusubiWebView
+          style={styles.webView}
+          url={article.url}
+          offlineHtmlPath={offlineHtmlPath}
+          adBlockEnabled={true}
+          preferOfflineCache={preferCache && Boolean(offlineHtmlPath)}
+          autoScrollEnabled={isAutoScrolling}
+          autoScrollSpeed={currentSpeedPreset.pointsPerSecond}
+          onLoadStart={handleLoadStart}
+          onLoadEnd={handleLoadEnd}
+          onAutoScrollStateChange={handleAutoScrollStateChange}
+        />
+
+        <View
+          testID="reader-autoscroll-pill"
+          style={[
+            styles.autoScrollPill,
+            {
+              backgroundColor: isAutoScrolling
+                ? colors.accent
+                : colors.surface,
+              borderColor: isAutoScrolling ? colors.accent : colors.border,
+            },
+          ]}
+        >
+          <Pressable
+            testID="reader-autoscroll-toggle"
+            accessibilityRole="button"
+            accessibilityLabel={
+              isAutoScrolling ? '自動スクロールを停止' : '自動スクロールを開始'
+            }
+            onPress={handleToggleAutoScroll}
+            style={styles.autoScrollToggleBtn}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.autoScrollToggleText,
+                { color: isAutoScrolling ? '#FFFFFF' : colors.text },
+              ]}
+            >
+              {isAutoScrolling ? '⏸' : '▶ 自動'}
+            </Text>
+          </Pressable>
+
+          {isAutoScrolling ? (
+            <>
+              <View style={styles.autoScrollDivider} />
+              <Pressable
+                testID="reader-autoscroll-slower"
+                accessibilityRole="button"
+                accessibilityLabel="スクロールを遅くする"
+                disabled={autoScrollSpeedIndex <= 0}
+                onPress={() => handleChangeAutoScrollSpeed(-1)}
+                style={[
+                  styles.autoScrollStepBtn,
+                  autoScrollSpeedIndex <= 0 && styles.autoScrollStepDisabled,
+                ]}
+              >
+                <Text style={styles.autoScrollStepText}>−</Text>
+              </Pressable>
+              <Text
+                testID="reader-autoscroll-speed-label"
+                style={styles.autoScrollSpeedText}
+              >
+                {currentSpeedPreset.label}
+              </Text>
+              <Pressable
+                testID="reader-autoscroll-faster"
+                accessibilityRole="button"
+                accessibilityLabel="スクロールを速くする"
+                disabled={
+                  autoScrollSpeedIndex >= AUTO_SCROLL_SPEED_PRESETS.length - 1
+                }
+                onPress={() => handleChangeAutoScrollSpeed(1)}
+                style={[
+                  styles.autoScrollStepBtn,
+                  autoScrollSpeedIndex >=
+                    AUTO_SCROLL_SPEED_PRESETS.length - 1 &&
+                    styles.autoScrollStepDisabled,
+                ]}
+              >
+                <Text style={styles.autoScrollStepText}>＋</Text>
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+      </View>
 
       {renderToolbar(true)}
     </View>
@@ -543,8 +670,65 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  webViewWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
   webView: {
     flex: 1,
+  },
+  autoScrollPill: {
+    position: 'absolute',
+    right: 14,
+    bottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 4,
+    minHeight: 38,
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  autoScrollToggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  autoScrollToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  autoScrollDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  autoScrollStepBtn: {
+    minWidth: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  autoScrollStepDisabled: {
+    opacity: 0.4,
+  },
+  autoScrollStepText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  autoScrollSpeedText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    minWidth: 34,
+    textAlign: 'center',
   },
   statusBanner: {
     flexDirection: 'row',

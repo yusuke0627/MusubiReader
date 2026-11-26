@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import Foundation
+import UIKit
 import WebKit
 
 @MainActor
@@ -85,11 +86,17 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   var adBlockEnabled: Bool = true
   var preferOfflineCache: Bool = false
   var ignoreHttpCache: Bool = false
+  var autoScrollEnabled: Bool = false
+  var autoScrollSpeed: Double = 40.0
 
   let onLoadStart = EventDispatcher()
   let onLoadEnd = EventDispatcher()
+  let onAutoScrollStateChange = EventDispatcher()
 
   private let webView: WKWebView
+  private var displayLink: CADisplayLink?
+  private var lastAutoScrollTimestamp: CFTimeInterval?
+  private var didDisableIdleTimer = false
   private var loadedUrl: String?
   private var appliedAdBlockEnabled: Bool?
   private var appliedPreferOfflineCache: Bool?
@@ -126,11 +133,104 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
 
   deinit {
     NotificationCenter.default.removeObserver(self)
+    displayLink?.invalidate()
+    displayLink = nil
+    if didDisableIdleTimer {
+      Task { @MainActor in
+        UIApplication.shared.isIdleTimerDisabled = false
+      }
+    }
+  }
+
+  public override func willMove(toWindow newWindow: UIWindow?) {
+    super.willMove(toWindow: newWindow)
+    if newWindow == nil {
+      stopAutoScrollLoop()
+    } else if autoScrollEnabled {
+      startAutoScrollLoopIfNeeded()
+    }
   }
 
   public override func layoutSubviews() {
     super.layoutSubviews()
     webView.frame = bounds
+  }
+
+  private func updateAutoScrollState() {
+    if autoScrollEnabled && autoScrollSpeed > 0 {
+      startAutoScrollLoopIfNeeded()
+    } else {
+      stopAutoScrollLoop()
+    }
+  }
+
+  private func startAutoScrollLoopIfNeeded() {
+    guard window != nil, displayLink == nil else {
+      return
+    }
+    lastAutoScrollTimestamp = nil
+    let link = CADisplayLink(target: self, selector: #selector(handleAutoScrollTick(_:)))
+    link.add(to: .main, forMode: .common)
+    displayLink = link
+    if !didDisableIdleTimer {
+      UIApplication.shared.isIdleTimerDisabled = true
+      didDisableIdleTimer = true
+    }
+  }
+
+  private func stopAutoScrollLoop() {
+    displayLink?.invalidate()
+    displayLink = nil
+    lastAutoScrollTimestamp = nil
+    if didDisableIdleTimer {
+      UIApplication.shared.isIdleTimerDisabled = false
+      didDisableIdleTimer = false
+    }
+  }
+
+  @objc private func handleAutoScrollTick(_ link: CADisplayLink) {
+    guard autoScrollEnabled, autoScrollSpeed > 0 else {
+      stopAutoScrollLoop()
+      return
+    }
+
+    let scrollView = webView.scrollView
+    // Pause gently while the user touches or flings the page, then resume cleanly.
+    if scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating {
+      lastAutoScrollTimestamp = nil
+      return
+    }
+
+    let now = link.timestamp
+    guard let prev = lastAutoScrollTimestamp else {
+      lastAutoScrollTimestamp = now
+      return
+    }
+    lastAutoScrollTimestamp = now
+
+    let dt = min(max(now - prev, 0), 0.1)
+    let visibleHeight = scrollView.bounds.height
+    let contentHeight = scrollView.contentSize.height
+    let bottomInset = scrollView.adjustedContentInset.bottom
+    let maxOffsetY = max(0, contentHeight - visibleHeight + bottomInset)
+
+    if maxOffsetY <= 1 {
+      return
+    }
+
+    let currentY = scrollView.contentOffset.y
+    if currentY >= maxOffsetY - 0.5 {
+      stopAutoScrollLoop()
+      autoScrollEnabled = false
+      onAutoScrollStateChange([
+        "isScrolling": false,
+        "reason": "end_reached",
+      ])
+      return
+    }
+
+    let nextY = min(maxOffsetY, currentY + CGFloat(autoScrollSpeed * dt))
+    scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: nextY), animated: false)
   }
 
   @objc private func handleRulesUpdated() {
@@ -141,6 +241,8 @@ public final class MusubiWebView: ExpoView, WKNavigationDelegate, WKUIDelegate {
   }
 
   func applyPendingUpdates() {
+    updateAutoScrollState()
+
     let normalizedUrl = url.trimmingCharacters(in: .whitespacesAndNewlines)
     let urlChanged = normalizedUrl != loadedUrl
     let adBlockChanged = adBlockEnabled != appliedAdBlockEnabled

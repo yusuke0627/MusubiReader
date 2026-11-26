@@ -16,7 +16,7 @@ public final class MusubiWebViewModule: Module {
     }
 
     View(MusubiWebView.self) {
-      Events("onLoadStart", "onLoadEnd")
+      Events("onLoadStart", "onLoadEnd", "onAutoScrollStateChange")
 
       Prop("url") { (view, url: String?) in
         view.url = url ?? ""
@@ -36,6 +36,14 @@ public final class MusubiWebViewModule: Module {
 
       Prop("ignoreHttpCache", false) { (view, ignoreHttpCache: Bool) in
         view.ignoreHttpCache = ignoreHttpCache
+      }
+
+      Prop("autoScrollEnabled", false) { (view, autoScrollEnabled: Bool) in
+        view.autoScrollEnabled = autoScrollEnabled
+      }
+
+      Prop("autoScrollSpeed", 40.0) { (view, autoScrollSpeed: Double) in
+        view.autoScrollSpeed = max(0, autoScrollSpeed)
       }
 
       OnViewDidUpdateProps { view in
