@@ -9,15 +9,21 @@ export async function fetchWithTimeout(
   url: string,
   fetcher: typeof fetch = fetch,
   timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
-  init?: RequestInit
+  init?: RequestInit,
+  externalSignal?: AbortSignal
 ): Promise<Response> {
+  if (externalSignal?.aborted) {
+    throw new Error(`Request aborted: ${url}`);
+  }
+
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onExternalAbort: (() => void) | undefined;
 
   const fetchPromise = Promise.resolve().then(() =>
     fetcher(url, { ...init, signal: controller.signal })
   );
-  // Prevent unhandled rejection if timeout settles first and fetcher rejects later.
+  // Prevent unhandled rejection if timeout/abort settles first and fetcher rejects later.
   fetchPromise.catch(() => {});
 
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
@@ -27,24 +33,42 @@ export async function fetchWithTimeout(
     }, timeoutMs);
   });
 
+  const racers: Array<Promise<Response>> = [fetchPromise, timeoutPromise];
+
+  if (externalSignal) {
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      onExternalAbort = () => {
+        controller.abort();
+        reject(new Error(`Request aborted: ${url}`));
+      };
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    });
+    racers.push(abortPromise);
+  }
+
   try {
-    return await Promise.race([fetchPromise, timeoutPromise]);
+    return await Promise.race(racers);
   } finally {
     if (timer !== undefined) {
       clearTimeout(timer);
+    }
+    if (externalSignal && onExternalAbort) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
     }
   }
 }
 
 /**
  * Maps items through an async worker while capping in-flight concurrency.
+ * Stops scheduling new work immediately when `signal` is aborted.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
+  worker: (item: T, index: number) => Promise<R>,
+  signal?: AbortSignal
 ): Promise<R[]> {
-  if (items.length === 0) {
+  if (items.length === 0 || signal?.aborted) {
     return [];
   }
 
@@ -53,7 +77,7 @@ export async function mapWithConcurrency<T, R>(
   let nextIndex = 0;
 
   async function runWorker(): Promise<void> {
-    while (nextIndex < items.length) {
+    while (nextIndex < items.length && !signal?.aborted) {
       const currentIndex = nextIndex;
       nextIndex += 1;
       results[currentIndex] = await worker(items[currentIndex], currentIndex);
